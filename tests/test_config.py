@@ -1,0 +1,125 @@
+"""Tests for config loading, env overrides, and model resolution."""
+
+import json
+import os
+import stat
+from unittest.mock import patch
+
+import pytest
+
+from ask_cli.config import (
+    AppConfig,
+    _deep_merge,
+    load_config,
+    resolve_model,
+)
+from ask_cli.exceptions import ConfigError
+
+
+def test_first_run_creates_config(tmp_path):
+    config_path = tmp_path / "config.json"
+    config = load_config(config_path)
+    assert config_path.exists()
+    assert isinstance(config, AppConfig)
+
+
+def test_first_run_sets_permissions(tmp_path):
+    config_path = tmp_path / "config.json"
+    load_config(config_path)
+    file_stat = config_path.stat()
+    # Owner read+write only
+    assert file_stat.st_mode & stat.S_IRUSR
+    assert file_stat.st_mode & stat.S_IWUSR
+    assert not (file_stat.st_mode & stat.S_IRGRP)
+    assert not (file_stat.st_mode & stat.S_IROTH)
+
+
+def test_load_valid_config(config_file):
+    config = load_config(config_file)
+    assert config.default_provider == "zai"
+    assert config.providers["zai"].api_key == "sk-test"
+    assert config.providers["zai"].default_model == "claude-sonnet-4-5-20251001"
+
+
+def test_missing_keys_fall_back_to_defaults(tmp_path):
+    config_path = tmp_path / "config.json"
+    # Only override one thing
+    config_path.write_text(json.dumps({"default_provider": "anthropic"}))
+    config = load_config(config_path)
+    # defaults still present
+    assert config.defaults.max_tokens == 4096
+    assert config.defaults.quick_max_tokens == 256
+
+
+def test_invalid_json_raises_config_error(tmp_path):
+    config_path = tmp_path / "bad.json"
+    config_path.write_text("{ this is not json }")
+    with pytest.raises(ConfigError, match="Invalid JSON"):
+        load_config(config_path)
+
+
+def test_env_var_overrides_api_key(tmp_path, config_file):
+    with patch.dict(os.environ, {"ASK_ZAI_API_KEY": "env-override-key"}):
+        config = load_config(config_file)
+    assert config.providers["zai"].api_key == "env-override-key"
+
+
+def test_env_var_anthropic_override(tmp_path):
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps({}))
+    with patch.dict(os.environ, {"ASK_ANTHROPIC_API_KEY": "anth-env-key"}):
+        config = load_config(config_path)
+    assert config.providers["anthropic"].api_key == "anth-env-key"
+
+
+def test_deep_merge_nested():
+    base = {"a": {"x": 1, "y": 2}, "b": 3}
+    override = {"a": {"y": 99, "z": 100}, "c": 4}
+    result = _deep_merge(base, override)
+    assert result["a"]["x"] == 1  # preserved from base
+    assert result["a"]["y"] == 99  # overridden
+    assert result["a"]["z"] == 100  # added from override
+    assert result["b"] == 3  # preserved
+    assert result["c"] == 4  # added
+
+
+def test_deep_merge_non_dict_override():
+    base = {"a": {"x": 1}}
+    override = {"a": "not-a-dict"}
+    result = _deep_merge(base, override)
+    assert result["a"] == "not-a-dict"
+
+
+class TestResolveModel:
+    def test_explicit_wins(self, minimal_app_config):
+        model = resolve_model(minimal_app_config, "zai", explicit="my-model")
+        assert model == "my-model"
+
+    def test_smart_wins_over_fast(self, minimal_app_config):
+        model = resolve_model(minimal_app_config, "zai", fast=True, smart=True)
+        assert model == "test-smart-model"
+
+    def test_fast_when_not_smart(self, minimal_app_config):
+        model = resolve_model(minimal_app_config, "zai", fast=True, smart=False)
+        assert model == "test-fast-model"
+
+    def test_default_model(self, minimal_app_config):
+        model = resolve_model(minimal_app_config, "zai")
+        assert model == "test-model"
+
+    def test_unknown_provider_returns_empty(self, minimal_app_config):
+        model = resolve_model(minimal_app_config, "nonexistent")
+        assert model == ""
+
+
+def test_system_prompt_parsed_from_config(tmp_path):
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps({"defaults": {"system_prompt": "Be terse."}}))
+    config = load_config(config_path)
+    assert config.defaults.system_prompt == "Be terse."
+
+
+def test_default_config_includes_linux_system_prompt(tmp_path):
+    config_path = tmp_path / "config.json"
+    config = load_config(config_path)  # first run — writes DEFAULT_CONFIG
+    assert "Linux" in config.defaults.system_prompt
