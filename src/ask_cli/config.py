@@ -32,7 +32,7 @@ DEFAULT_CONFIG: dict = {
     "providers": {
         "zai": {
             "api_key": "",
-            "base_url": "https://api.z.ai/v1",
+            "base_url": "https://api.z.ai/api/anthropic",
             "default_model": "claude-sonnet-4-5-20251001",
             "fast_model": "claude-haiku-4-5-20251001",
             "smart_model": "claude-opus-4-5-20251001",
