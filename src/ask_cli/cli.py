@@ -1,6 +1,7 @@
 """Argument parsing and entry point for ask-cli."""
 
 import json
+import os
 import sys
 
 import pyperclip
@@ -14,6 +15,7 @@ from ask_cli.config import (
     TEMPLATES_DIR,
     USAGE_STATS_PATH,
     AppConfig,
+    DefaultsConfig,
     load_config,
     resolve_model,
 )
@@ -67,6 +69,19 @@ PROVIDER_CLASSES: dict[str, type[BaseProvider]] = {
     "google": GoogleProvider,
     "ollama": OllamaProvider,
 }
+
+
+def _select_base_system_prompt(defaults: DefaultsConfig) -> str:
+    """Pick the system prompt for the current invocation context.
+
+    `ASK_CONTEXT=windows` (set by the PowerShell wrapper and propagated via
+    WSLENV) selects the Windows/general prompt; anything else uses the Linux
+    default. Falls back to the Linux prompt if the Windows variant is empty.
+    """
+    context = os.environ.get("ASK_CONTEXT", "linux").lower()
+    if context == "windows" and defaults.system_prompt_windows:
+        return defaults.system_prompt_windows
+    return defaults.system_prompt
 
 
 def _build_provider(name: str, config: AppConfig) -> BaseProvider:
@@ -402,7 +417,7 @@ def main() -> None:
     template = _determine_template(args)
     try:
         system_prompt = resolve_system_prompt(
-            template, args.quick, TEMPLATES_DIR, config.defaults.system_prompt
+            template, args.quick, TEMPLATES_DIR, _select_base_system_prompt(config.defaults)
         )
     except TemplateError as e:
         render_error(str(e))

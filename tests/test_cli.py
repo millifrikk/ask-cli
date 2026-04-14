@@ -484,3 +484,69 @@ def test_agent_does_not_call_run_query():
 
         main()
     mock_run.assert_not_called()
+
+
+# --- ASK_CONTEXT system prompt selection ---
+
+
+def test_default_context_uses_linux_system_prompt():
+    """No ASK_CONTEXT (or any value other than 'windows') uses the Linux prompt."""
+    from ask_cli.cli import _select_base_system_prompt
+
+    defaults = DefaultsConfig(
+        system_prompt="LINUX_PROMPT",
+        system_prompt_windows="WINDOWS_PROMPT",
+    )
+    with patch.dict("os.environ", {}, clear=False):
+        import os
+
+        os.environ.pop("ASK_CONTEXT", None)
+        assert _select_base_system_prompt(defaults) == "LINUX_PROMPT"
+
+
+def test_windows_context_uses_windows_system_prompt():
+    """ASK_CONTEXT=windows selects the Windows prompt."""
+    from ask_cli.cli import _select_base_system_prompt
+
+    defaults = DefaultsConfig(
+        system_prompt="LINUX_PROMPT",
+        system_prompt_windows="WINDOWS_PROMPT",
+    )
+    with patch.dict("os.environ", {"ASK_CONTEXT": "windows"}):
+        assert _select_base_system_prompt(defaults) == "WINDOWS_PROMPT"
+
+
+def test_windows_context_case_insensitive():
+    """ASK_CONTEXT=WINDOWS (uppercase) also selects the Windows prompt."""
+    from ask_cli.cli import _select_base_system_prompt
+
+    defaults = DefaultsConfig(
+        system_prompt="LINUX_PROMPT",
+        system_prompt_windows="WINDOWS_PROMPT",
+    )
+    with patch.dict("os.environ", {"ASK_CONTEXT": "WINDOWS"}):
+        assert _select_base_system_prompt(defaults) == "WINDOWS_PROMPT"
+
+
+def test_windows_context_falls_back_when_windows_prompt_empty():
+    """If Windows prompt is empty, fall back to Linux prompt — backwards-safe."""
+    from ask_cli.cli import _select_base_system_prompt
+
+    defaults = DefaultsConfig(
+        system_prompt="LINUX_PROMPT",
+        system_prompt_windows="",
+    )
+    with patch.dict("os.environ", {"ASK_CONTEXT": "windows"}):
+        assert _select_base_system_prompt(defaults) == "LINUX_PROMPT"
+
+
+def test_unknown_context_falls_back_to_linux():
+    """ASK_CONTEXT=mac (or anything unknown) uses the Linux prompt."""
+    from ask_cli.cli import _select_base_system_prompt
+
+    defaults = DefaultsConfig(
+        system_prompt="LINUX_PROMPT",
+        system_prompt_windows="WINDOWS_PROMPT",
+    )
+    with patch.dict("os.environ", {"ASK_CONTEXT": "mac"}):
+        assert _select_base_system_prompt(defaults) == "LINUX_PROMPT"

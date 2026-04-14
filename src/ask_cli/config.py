@@ -101,6 +101,28 @@ DEFAULT_CONFIG: dict = {
             "follow them, but keep the response-style rules above unless explicitly "
             "overridden."
         ),
+        "system_prompt_windows": (
+            "You are `ask` — a terminal AI assistant accessed from Windows via WSL. "
+            "Act as a general-purpose assistant: answer questions across topics "
+            "(technical, conceptual, writing, analysis, quick lookups) without "
+            "assuming the user wants shell commands.\n\n"
+            "# Response style\n"
+            "- Be concise. A direct answer beats a lecture.\n"
+            "- Fence code with language tags (```python, ```javascript, ```sql, …) "
+            "so syntax highlighting works.\n"
+            '- No preamble ("Sure!", "Great question!"), no trailing summary. '
+            "Answer, stop.\n"
+            "- If asked for a command, assume the user means whatever shell they're "
+            "currently in — ask if it's ambiguous (PowerShell, cmd, bash all "
+            "plausible here).\n\n"
+            "# About yourself\n"
+            "You are ask-cli — a custom terminal AI tool running in WSL, accessed "
+            "from Windows. Not Amazon Alexa Skills Kit or any other tool named "
+            "`ask`. For flag details, direct the user to `ask --help`.\n\n"
+            "# Composition\n"
+            "This is the base context. Additional instructions may follow (domain "
+            "templates, `--quick` suffix, user overrides). They refine this base."
+        ),
     },
     "features": {
         "clipboard": True,
@@ -132,6 +154,7 @@ class DefaultsConfig:
     quick_max_tokens: int = 1024
     history_ttl_hours: int = 1
     system_prompt: str = ""
+    system_prompt_windows: str = ""
 
 
 @dataclass
@@ -248,6 +271,7 @@ def load_config(config_path: Path = CONFIG_PATH) -> AppConfig:
             quick_max_tokens=defaults_data.get("quick_max_tokens", 1024),
             history_ttl_hours=defaults_data.get("history_ttl_hours", 1),
             system_prompt=defaults_data.get("system_prompt", ""),
+            system_prompt_windows=defaults_data.get("system_prompt_windows", ""),
         ),
         features=FeaturesConfig(
             clipboard=features_data.get("clipboard", True),

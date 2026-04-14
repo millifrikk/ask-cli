@@ -123,3 +123,17 @@ def test_default_config_includes_linux_system_prompt(tmp_path):
     config_path = tmp_path / "config.json"
     config = load_config(config_path)  # first run — writes DEFAULT_CONFIG
     assert "Linux" in config.defaults.system_prompt
+
+
+def test_system_prompt_windows_parsed_from_config(tmp_path):
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps({"defaults": {"system_prompt_windows": "WIN_TEST"}}))
+    config = load_config(config_path)
+    assert config.defaults.system_prompt_windows == "WIN_TEST"
+
+
+def test_default_config_includes_windows_system_prompt(tmp_path):
+    config_path = tmp_path / "config.json"
+    config = load_config(config_path)  # creates DEFAULT_CONFIG on first run
+    assert "Windows" in config.defaults.system_prompt_windows
+    assert "WSL" in config.defaults.system_prompt_windows
