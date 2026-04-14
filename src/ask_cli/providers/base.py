@@ -20,8 +20,14 @@ class BaseProvider(ABC):
         model: str,
         max_tokens: int,
         system_prompt: str | None = None,
+        think: bool | None = None,
     ) -> Generator[str, None, None]:
-        """Yield text chunks from the model as they arrive."""
+        """Yield text chunks from the model as they arrive.
+
+        `think` controls reasoning-model behavior where supported (e.g. Qwen3.5
+        via Ollama): False disables thinking tokens, None leaves provider default.
+        Providers that don't support it ignore the argument.
+        """
         ...
 
     @abstractmethod

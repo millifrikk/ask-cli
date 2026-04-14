@@ -5,6 +5,7 @@ import sys
 
 import pyperclip
 
+from ask_cli import __version__
 from ask_cli.config import (
     COMMANDS_LOG_PATH,
     CONFIG_PATH,
@@ -158,6 +159,8 @@ def main() -> None:
         description="Terminal AI assistant",
     )
 
+    parser.add_argument("--version", action="version", version=f"ask {__version__}")
+
     parser.add_argument("query", nargs="*", help="Question or prompt")
 
     # Provider selection
@@ -191,7 +194,7 @@ def main() -> None:
         "--json", action="store_true", help="Output raw JSON (model must produce it)"
     )
     fmt_group.add_argument(
-        "--quick", action="store_true", help="Terse one-liner response (256 tokens)"
+        "--quick", action="store_true", help="Terse one-liner response (1024 tokens)"
     )
     fmt_group.add_argument(
         "--no-color", action="store_true", help="Disable color and rich formatting"
@@ -411,6 +414,10 @@ def main() -> None:
         system_prompt = (
             f"{system_prompt}\n\n{CMD_SYSTEM_SUFFIX}" if system_prompt else CMD_SYSTEM_SUFFIX
         )
+        # --cmd generates a single shell command — auto-copy it so the user
+        # can paste directly without clicking around the terminal.
+        if not args.copy_code:
+            args.copy_code = True
 
     # --agent: run the multi-step agent loop and return
     if args.agent:
@@ -449,6 +456,9 @@ def main() -> None:
             history=history,
             use_history=use_history,
             output_mode=output_mode,
+            # --quick disables reasoning tokens on models that support it (Qwen3.5
+            # via Ollama, etc.) so the token budget doesn't get eaten by thinking.
+            think=False if args.quick else None,
         )
     except ProviderError as e:
         hint = None

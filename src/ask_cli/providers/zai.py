@@ -33,6 +33,7 @@ class ZaiProvider(BaseProvider):
         model: str,
         max_tokens: int,
         system_prompt: str | None = None,
+        think: bool | None = None,  # noqa: ARG002
     ) -> Generator[str, None, None]:
         self.validate()
         client = self._get_client()

@@ -3,7 +3,6 @@
 from pathlib import Path
 
 from rich.live import Live
-from rich.markdown import Markdown
 
 from ask_cli.core.commands import (
     extract_command,
@@ -11,7 +10,7 @@ from ask_cli.core.commands import (
     log_command,
     run_command_with_output,
 )
-from ask_cli.output import console, render_info, render_warning
+from ask_cli.output import AskMarkdown, console, render_info, render_warning
 from ask_cli.providers.base import BaseProvider
 
 AGENT_PLAN_SYSTEM = (
@@ -39,7 +38,7 @@ def _stream_to_text(
     with Live(console=console, refresh_per_second=15) as live:
         for chunk in provider.stream(messages, model, max_tokens, system):
             accumulated.append(chunk)
-            live.update(Markdown("".join(accumulated)))
+            live.update(AskMarkdown("".join(accumulated)))
     return "".join(accumulated)
 
 

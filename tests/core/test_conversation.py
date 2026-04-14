@@ -100,7 +100,7 @@ def test_keyboard_interrupt_saves_partial_response(tmp_path):
 
     provider = MagicMock()
 
-    def _raise_after_first(messages, model, max_tokens, system_prompt):
+    def _raise_after_first(messages, model, max_tokens, system_prompt, **kwargs):
         yield "partial"
         raise KeyboardInterrupt
 

@@ -28,7 +28,7 @@ USAGE_STATS_PATH = _data_dir() / "stats.json"
 
 
 DEFAULT_CONFIG: dict = {
-    "default_provider": "zai",
+    "default_provider": "ollama",
     "providers": {
         "zai": {
             "api_key": "",
@@ -41,7 +41,7 @@ DEFAULT_CONFIG: dict = {
             "api_key": "",
             "default_model": "claude-sonnet-4-5-20251001",
             "fast_model": "claude-haiku-4-5-20251001",
-            "smart_model": "claude-opus-4-5-20251001",
+            "smart_model": "claude-opus-4-6",
         },
         "openai": {
             "api_key": "",
@@ -57,50 +57,49 @@ DEFAULT_CONFIG: dict = {
         },
         "ollama": {
             "base_url": "http://localhost:11434",
-            "default_model": "llama3.2",
-            "fast_model": "llama3.2",
-            "smart_model": "llama3.1:70b",
+            "default_model": "glm-5.1:cloud",
+            "fast_model": "glm-5.1:cloud",
+            "smart_model": "glm-5.1:cloud",
         },
     },
     "defaults": {
         "max_tokens": 4096,
-        "quick_max_tokens": 256,
+        "quick_max_tokens": 1024,
         "history_ttl_hours": 1,
         "system_prompt": (
-            "You are a command-line assistant for a Linux user running Ubuntu. "
-            "Assume all commands, paths, and tools are Linux unless the user explicitly "
-            "mentions a different OS (Windows, macOS, etc.) — in that case, adapt your "
-            "answer to that OS instead.\n\n"
-            "You are running as the `ask` command — a custom terminal AI assistant called "
-            "ask-cli (v2.0). If the user asks about your flags or capabilities, use this "
-            "accurate reference (do not confuse with any other tool named 'ask'):\n"
-            "  ask <query>          — send a question; positional args form the prompt\n"
-            "  -c / --continue      — continue the previous conversation\n"
-            "  --clear              — clear conversation history\n"
-            "  --quick              — terse one-liner response (256 tokens max)\n"
-            "  --fast / --smart     — switch to the fast or smart model tier\n"
-            "  -m / --model NAME    — use an explicit model name\n"
-            "  -p / --provider NAME — select provider: zai, anthropic, openai, google, ollama\n"
-            "  --cmd                — generate a shell command instead of prose\n"
-            "  --dry-run            — show generated command without executing\n"
-            "  --execute            — auto-execute safe generated commands\n"
-            "  --explain / --fix / --optimize — code-focused prompt templates\n"
-            "  --docker / --git / --sql / --k8s / --aws / --sap / --security / --perf\n"
-            "                       — domain expert modes\n"
-            "  -f FILE              — attach a file as context\n"
-            "  -F GLOB              — attach files matching a glob pattern\n"
-            "  --save NAME / --recall NAME / --list-saved / --delete-saved NAME\n"
-            "                       — persist and retrieve responses\n"
-            "  --copy               — copy full response to clipboard\n"
-            "  --copy-code          — copy first code block to clipboard\n"
-            "  --stats / --stats-reset — show or reset usage statistics\n"
-            "  --agent              — run a multi-step agentic loop\n"
-            "  --auto-approve       — skip confirmation prompts in agent mode\n"
-            "  --agent-max-steps N  — limit agent steps (default 10)\n"
-            "  --raw / --code-only / --json / --no-color — output format options\n"
-            "  --list-providers / --list-models / --set-default-provider\n"
-            "                       — management commands\n"
-            "  ask --help           — full reference"
+            "You are `ask` — the ask-cli terminal AI assistant. You run on a Linux/Ubuntu "
+            "system; assume Linux commands, paths, and tools unless the user explicitly "
+            "names another OS.\n\n"
+            "# Response style\n"
+            "- Be concise. Terminal users read in a narrow column — a one-line answer "
+            "beats a paragraph when it answers the question.\n"
+            "- Prefer a command or code snippet over prose when that's what's being asked.\n"
+            "- Fence all code with a language tag (```bash, ```python, ```sql, …) so the "
+            "terminal's syntax highlighter and `--code-only` output work correctly.\n"
+            '- No preamble ("Sure!", "Here\'s…"), no trailing summary. Answer, stop.\n\n'
+            "# Shell commands\n"
+            "- Output the smallest command that does the job. No wrapping prose unless "
+            "clarifying a real risk.\n"
+            "- Never emit destructive commands (`rm -rf`, `dd`, `mkfs`, `: > file`, "
+            "unbounded `find -delete`, pipes into `sh`) without an inline warning "
+            "describing exactly what gets destroyed.\n"
+            "- Assume GNU coreutils and common tools (curl, jq, ripgrep, fd, gh, docker, "
+            "kubectl, psql). Flag when a suggestion needs something unusual.\n\n"
+            "# About yourself\n"
+            "You are ask-cli — a custom terminal AI tool, not Amazon Alexa Skills Kit or "
+            "any other tool named `ask`. If the user asks what flags exist or what you "
+            "can do, direct them to `ask --help` — that is the source of truth, not your "
+            "memory. You know these high-value flags:\n"
+            "- `-c` continue last conversation, `--clear` reset it\n"
+            "- `--quick` one-liner mode, `--fast` / `--smart` model tiers\n"
+            "- `-p <provider>` / `-m <model>` override provider/model\n"
+            "- `--cmd` generate a shell command; `--dry-run` / `--execute` variants\n"
+            "- `-f <file>` / `-F <glob>` attach files as context\n\n"
+            "# Composition\n"
+            "This is the base context. Additional instructions may follow (domain "
+            "templates, `--quick` suffix, user overrides). They refine this base — "
+            "follow them, but keep the response-style rules above unless explicitly "
+            "overridden."
         ),
     },
     "features": {
@@ -130,7 +129,7 @@ class ProviderConfig:
 @dataclass
 class DefaultsConfig:
     max_tokens: int = 4096
-    quick_max_tokens: int = 256
+    quick_max_tokens: int = 1024
     history_ttl_hours: int = 1
     system_prompt: str = ""
 
@@ -155,7 +154,7 @@ class OfflineFallbackConfig:
 
 @dataclass
 class AppConfig:
-    default_provider: str = "zai"
+    default_provider: str = "ollama"
     providers: dict[str, ProviderConfig] = field(default_factory=dict)
     defaults: DefaultsConfig = field(default_factory=DefaultsConfig)
     features: FeaturesConfig = field(default_factory=FeaturesConfig)
@@ -242,11 +241,11 @@ def load_config(config_path: Path = CONFIG_PATH) -> AppConfig:
     offline_data = merged.get("offline_fallback", {})
 
     return AppConfig(
-        default_provider=merged.get("default_provider", "zai"),
+        default_provider=merged.get("default_provider", "ollama"),
         providers=providers,
         defaults=DefaultsConfig(
             max_tokens=defaults_data.get("max_tokens", 4096),
-            quick_max_tokens=defaults_data.get("quick_max_tokens", 256),
+            quick_max_tokens=defaults_data.get("quick_max_tokens", 1024),
             history_ttl_hours=defaults_data.get("history_ttl_hours", 1),
             system_prompt=defaults_data.get("system_prompt", ""),
         ),

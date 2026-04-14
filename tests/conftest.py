@@ -37,7 +37,7 @@ def minimal_app_config(minimal_provider_config) -> AppConfig:
             "google": ProviderConfig(api_key="google-key", default_model="gemini-1.5-flash"),
             "ollama": ProviderConfig(base_url="http://localhost:11434", default_model="llama3.2"),
         },
-        defaults=DefaultsConfig(max_tokens=4096, quick_max_tokens=256, history_ttl_hours=1),
+        defaults=DefaultsConfig(max_tokens=4096, quick_max_tokens=1024, history_ttl_hours=1),
         features=FeaturesConfig(),
         output=OutputConfig(),
         offline_fallback=OfflineFallbackConfig(),

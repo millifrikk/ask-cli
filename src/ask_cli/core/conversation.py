@@ -3,11 +3,10 @@
 import re
 
 from rich.live import Live
-from rich.markdown import Markdown
 from rich.text import Text
 
 from ask_cli.core.history import ConversationHistory
-from ask_cli.output import console, render_code, render_raw
+from ask_cli.output import AskMarkdown, console, render_code, render_raw
 from ask_cli.providers.base import BaseProvider
 
 
@@ -21,6 +20,7 @@ def run_query(
     history: ConversationHistory,
     use_history: bool,
     output_mode: str,
+    think: bool | None = None,
 ) -> str:
     """Stream a query through the provider and return the full response text."""
     messages = (history.messages if use_history else []) + [{"role": "user", "content": query}]
@@ -39,7 +39,7 @@ def run_query(
             refresh_per_second=15,
             transient=code_only,
         ) as live:
-            for chunk in provider.stream(messages, model, max_tokens, system_prompt):
+            for chunk in provider.stream(messages, model, max_tokens, system_prompt, think=think):
                 accumulated.append(chunk)
                 text = "".join(accumulated)
                 live.update(_live_renderable(text, output_mode))
@@ -60,10 +60,10 @@ def run_query(
     return full_response
 
 
-def _live_renderable(text: str, output_mode: str) -> Markdown | Text:
+def _live_renderable(text: str, output_mode: str) -> AskMarkdown | Text:
     """Return the right rich renderable for the streaming display."""
     if output_mode in ("markdown", ""):
-        return Markdown(text)
+        return AskMarkdown(text)
     # raw / json / code — plain text during streaming
     return Text(text)
 

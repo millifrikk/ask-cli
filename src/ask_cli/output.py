@@ -1,12 +1,43 @@
 """Single rich.Console instance and all rendering helpers for ask-cli."""
 
 from rich.console import Console
-from rich.markdown import Markdown
+from rich.markdown import CodeBlock, Markdown
 from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.table import Table
 
 console = Console(highlight=False)
+
+
+class PlainCodeBlock(CodeBlock):
+    """Code block renderer without padding or filled background.
+
+    The default rich CodeBlock wraps fenced code in a padded panel that fills
+    the terminal width — pretty, but makes terminal click-selection include
+    leading spaces and trailing background padding. This subclass strips both
+    so triple-click grabs exactly the code.
+    """
+
+    def __rich_console__(self, console, options):
+        code = str(self.text).rstrip()
+        yield Syntax(
+            code,
+            self.lexer_name,
+            theme=self.theme,
+            word_wrap=True,
+            padding=0,
+            background_color="default",
+        )
+
+
+class AskMarkdown(Markdown):
+    """Markdown renderer that emits click-selectable code blocks."""
+
+    elements = {
+        **Markdown.elements,
+        "fence": PlainCodeBlock,
+        "code_block": PlainCodeBlock,
+    }
 
 
 def disable_color() -> None:
@@ -17,7 +48,7 @@ def disable_color() -> None:
 
 def render_markdown(text: str) -> None:
     """Render text as markdown."""
-    console.print(Markdown(text))
+    console.print(AskMarkdown(text))
 
 
 def render_raw(text: str) -> None:
@@ -26,8 +57,15 @@ def render_raw(text: str) -> None:
 
 
 def render_code(code: str, language: str = "", theme: str = "monokai") -> None:
-    """Render a code block with syntax highlighting."""
-    syntax = Syntax(code, language or "text", theme=theme, word_wrap=True)
+    """Render a code block with syntax highlighting, click-selection friendly."""
+    syntax = Syntax(
+        code,
+        language or "text",
+        theme=theme,
+        word_wrap=True,
+        padding=0,
+        background_color="default",
+    )
     console.print(syntax)
 
 

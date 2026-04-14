@@ -85,7 +85,7 @@ def test_quick_flag_sets_low_max_tokens():
 
             main()
         call_kwargs = mock_run.call_args[1]
-        assert call_kwargs["max_tokens"] == 256
+        assert call_kwargs["max_tokens"] == 1024
 
 
 def test_continue_flag_loads_history():

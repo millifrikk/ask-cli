@@ -118,6 +118,46 @@ chore: add ruff to pyproject.toml
 
 ---
 
+## Versioning & Releases
+
+### Single source of truth
+The package version lives in **one place**: `src/ask_cli/__init__.py`.
+```python
+__version__ = "2.1.0"
+```
+`pyproject.toml` reads it dynamically via hatch — never hardcode the version there.
+
+### SemVer rules
+- **Patch** (`2.1.0 → 2.1.1`) — bug fixes, no user-visible behavior change
+- **Minor** (`2.1.0 → 2.2.0`) — new features, backward compatible
+- **Major** (`2.1.0 → 3.0.0`) — breaking changes (removed flags, incompatible config)
+
+### Release workflow (every release)
+```bash
+# 1. Bump version
+vim src/ask_cli/__init__.py        # edit __version__
+
+# 2. Commit + tag
+git add -A
+git commit -m "chore: bump version to v2.1.1"
+git tag v2.1.1
+git push origin main --tags
+
+# 3. (Optional) GitHub release page
+gh release create v2.1.1 --generate-notes
+```
+
+### CLI exposure
+`ask --version` reads `__version__` directly — always matches the package. No drift between `--version` output and installed metadata.
+
+### Rules
+- Never bump version without tagging — untagged bumps leave no release record
+- Never tag without bumping — tags must map 1:1 with `__version__` values
+- Never reuse a tag — once `v2.1.0` is pushed, the next release is `v2.1.1` or higher
+- The `main` branch always reflects a released or in-progress version — feature branches for anything non-trivial
+
+---
+
 ## File & Directory Layout
 
 ```

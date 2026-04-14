@@ -123,3 +123,27 @@ class TestOllamaProvider:
 
             with pytest.raises(ProviderError, match="Ollama"):
                 list(provider.stream([{"role": "user", "content": "hi"}], "llama3", 100))
+
+    def test_think_false_passed_as_extra_body(self):
+        provider = OllamaProvider(ProviderConfig())
+        with patch.object(provider, "_get_client") as mock_get_client:
+            mock_client = MagicMock()
+            mock_get_client.return_value = mock_client
+            mock_client.chat.completions.create.return_value = iter([])
+
+            list(provider.stream([{"role": "user", "content": "hi"}], "qwen3.5", 100, think=False))
+
+            call_kwargs = mock_client.chat.completions.create.call_args[1]
+            assert call_kwargs["extra_body"] == {"think": False}
+
+    def test_think_none_omits_extra_body(self):
+        provider = OllamaProvider(ProviderConfig())
+        with patch.object(provider, "_get_client") as mock_get_client:
+            mock_client = MagicMock()
+            mock_get_client.return_value = mock_client
+            mock_client.chat.completions.create.return_value = iter([])
+
+            list(provider.stream([{"role": "user", "content": "hi"}], "llama3", 100))
+
+            call_kwargs = mock_client.chat.completions.create.call_args[1]
+            assert call_kwargs["extra_body"] is None

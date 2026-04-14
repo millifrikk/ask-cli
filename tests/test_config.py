@@ -48,7 +48,7 @@ def test_missing_keys_fall_back_to_defaults(tmp_path):
     config = load_config(config_path)
     # defaults still present
     assert config.defaults.max_tokens == 4096
-    assert config.defaults.quick_max_tokens == 256
+    assert config.defaults.quick_max_tokens == 1024
 
 
 def test_invalid_json_raises_config_error(tmp_path):

@@ -35,6 +35,7 @@ class OllamaProvider(BaseProvider):
         model: str,
         max_tokens: int,
         system_prompt: str | None = None,
+        think: bool | None = None,
     ) -> Generator[str, None, None]:
         client = self._get_client()
 
@@ -42,12 +43,17 @@ class OllamaProvider(BaseProvider):
         if system_prompt:
             all_messages = [{"role": "system", "content": system_prompt}] + all_messages
 
+        # Ollama's OpenAI-compat endpoint accepts `think` via extra_body for
+        # reasoning models (Qwen3.5, DeepSeek-R1, …). Passing None skips it.
+        extra_body = {"think": think} if think is not None else None
+
         try:
             stream = client.chat.completions.create(
                 model=model,
                 max_tokens=max_tokens,
                 messages=all_messages,  # type: ignore[arg-type]
                 stream=True,
+                extra_body=extra_body,
             )
             for chunk in stream:
                 delta = chunk.choices[0].delta if chunk.choices else None
