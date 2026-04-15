@@ -40,9 +40,10 @@ Release history:
 
 | Setting | Value |
 |---|---|
-| Provider | Google Gemini |
+| Provider | Google Gemini (default); Z.ai and Anthropic also configured |
 | Default model | `gemini-3-flash-preview` |
-| API key location | **⚠️ `~/.config/ask/config.json`** (pending migration to `ASK_GOOGLE_API_KEY` env var) |
+| API keys | `~/.bashrc` env vars (`ASK_ZAI_API_KEY`, `ASK_ANTHROPIC_API_KEY`, `ASK_GOOGLE_API_KEY`). Migrated 2026-04-15 via `docs/one-off/migrate-api-keys-to-env.md`; `api_key` fields in config.json blanked. |
+| `.bashrc` cleanup | Duplicate `export` lines deduped 2026-04-15 (kept last occurrence per name). |
 | Installed version | **v2.3.0** (pending pull to v2.3.2 for the security hardening + permission migration) |
 | Context | Depends on entry point — Linux from WSL terminal, Windows from PowerShell |
 | Windows integration | Path B (corporate-locked): User-scope env vars `ASK_CONTEXT=windows` + `WSLENV=ASK_CONTEXT/u`; PowerShell profile scripts blocked by Group Policy |
@@ -134,10 +135,10 @@ Audit artifacts (`AUDIT-REPORT.md`, `FILE-IO-AUDIT.md`, `GIT-HISTORY-SECRETS-AUD
 ### Pending user actions (not delegated to Claude)
 - [ ] Pull v2.3.2 on work laptop (WSL corporate): `cd ~/projects/ask-cli && git pull --tags && ~/.venvs/ask-cli/bin/pip install -e . && ask --version`. One `ask` invocation afterward runs the permission migration.
 - [ ] Pull v2.3.2 on personal PC (WSL): same command.
-- [ ] Move Google API key on WSL laptop from `~/.config/ask/config.json` → `ASK_GOOGLE_API_KEY` in `~/.bashrc`.
+- [x] ~~Move Google API key on WSL laptop from `~/.config/ask/config.json` → `ASK_GOOGLE_API_KEY` in `~/.bashrc`.~~ Done 2026-04-15 — all three configured keys (zai, anthropic, google) migrated; config.json blanked.
 
 ### Housekeeping (no urgency)
-- [ ] Clean up duplicate `export PATH` lines in WSL `~/.bashrc` (cosmetic)
+- [x] ~~Clean up duplicate `export PATH` lines in WSL `~/.bashrc` (cosmetic)~~ Done 2026-04-15 via `/tmp/dedupe-command.txt` heredoc — all duplicate exports deduped.
 
 ### Process improvements we discussed but didn't wire up
 - [ ] Auto-detect non-interactive WSL shells from Windows for more robust context detection (alternative to `ASK_CONTEXT` env var propagation)
