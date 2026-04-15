@@ -133,17 +133,26 @@ __version__ = "2.1.0"
 - **Major** (`2.1.0 → 3.0.0`) — breaking changes (removed flags, incompatible config)
 
 ### Release workflow (every release)
+
+Follow the full [Release Checklist](docs/RELEASE-CHECKLIST.md) — scoped
+by release type (patch / feature / major). Short version:
+
 ```bash
-# 1. Bump version
+# 1. Pre-flight: tests + lint green, working tree clean
+pytest -q && ruff check src/ tests/
+
+# 2. Bump version
 vim src/ask_cli/__init__.py        # edit __version__
 
-# 2. Commit + tag
+# 3. Update CHANGELOG.md and the README version badge
+
+# 4. Commit + tag
 git add -A
 git commit -m "chore: bump version to v2.1.1"
 git tag v2.1.1
 git push origin main --tags
 
-# 3. (Optional) GitHub release page
+# 5. GitHub release page
 gh release create v2.1.1 --generate-notes
 ```
 
