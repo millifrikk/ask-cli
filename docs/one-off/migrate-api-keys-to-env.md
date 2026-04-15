@@ -1,5 +1,13 @@
 # One-off: move API keys from config.json → ~/.bashrc
 
+> ⚠️ **Don't run this on WSL dual-entry machines** — ones where you also
+> invoke `wsl ask "..."` from Windows PowerShell. `wsl.exe` spawns a
+> non-interactive bash that doesn't source `~/.bashrc`, so the env vars
+> are invisible there and PowerShell invocations break with "Provider is
+> not configured". Keep keys in `~/.config/ask/config.json` instead
+> (chmod 0o600, same security posture). The `restore-api-keys-for-wsl-dual-entry.md`
+> doc in this folder walks through recovering if you already ran this.
+
 Run these on the machine where the keys live in `~/.config/ask/config.json`.
 Each step is self-contained. Open this file in a local editor
 (`nano docs/one-off/migrate-api-keys-to-env.md` or your editor of

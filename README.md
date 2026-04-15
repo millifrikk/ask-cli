@@ -184,9 +184,11 @@ ask --version
 
 ## Configuration
 
-### API keys — use environment variables, not the config file
+### API keys — where to put them
 
-Put keys in `~/.bashrc` (Linux) or equivalent. Environment variables **override** anything in the config file, and they keep secrets out of files.
+Two places are supported; env vars override the config file when both are set.
+
+**If you'll only invoke `ask` from an interactive shell (native Linux, or WSL used as a terminal):** put keys in `~/.bashrc`. Keeps secrets out of files and lets you rotate per-shell.
 
 ```bash
 cat >> ~/.bashrc << 'EOF'
@@ -197,6 +199,8 @@ export ASK_GOOGLE_API_KEY="..."
 EOF
 source ~/.bashrc
 ```
+
+**If you'll also invoke `wsl ask "..."` from Windows PowerShell (dual-entry setup):** you also need keys in `~/.config/ask/config.json`. `wsl.exe` spawns a non-interactive bash, which does **not** source `~/.bashrc`, so env-var-only setups will fail with `Provider is not configured` on PowerShell invocations. Edit the config file (chmod 600 is applied automatically) and set `api_key` for each provider you use. Having the key in both places is fine — env vars win in interactive WSL, config.json takes over for `wsl ask`.
 
 Ollama (local or cloud) needs no key.
 
@@ -286,6 +290,8 @@ wsl ask "what OS am I on?"
 ```
 
 You'll type `wsl ask "..."` instead of `ask "..."` (four extra characters) — small price to pay on a locked-down machine.
+
+> ⚠️ **API keys must be in `~/.config/ask/config.json`** on WSL dual-entry setups. `wsl.exe` spawns a non-interactive bash that doesn't source `~/.bashrc`, so env-var-only configs fail with "Provider is not configured" when invoked from PowerShell. See [Configuration → API keys](#api-keys--where-to-put-them) above.
 
 ### WSL clipboard (optional, both paths)
 
@@ -529,6 +535,8 @@ ask -p anthropic "..."
 ### Provider "not configured" error
 
 API key is missing. Check with `ask --list-providers` and set the appropriate env var (`ASK_<PROVIDER>_API_KEY`).
+
+**If it only fails when invoking `wsl ask "..."` from PowerShell** but works in an interactive WSL terminal: `wsl.exe` spawns a non-interactive bash that doesn't source `~/.bashrc`, so your env vars aren't visible there. Put the key in `~/.config/ask/config.json`'s `api_key` field as well — env vars stay authoritative for interactive WSL, config.json covers the PowerShell path.
 
 ### Config JSON parse error
 

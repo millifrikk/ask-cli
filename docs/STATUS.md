@@ -191,8 +191,8 @@ Joined with `\n\n`. Each layer optional.
 - CLI `--version` reads `__version__` directly
 
 ### Secrets policy
-- Env vars (`~/.bashrc`) are canonical; override config file
-- Config file (`~/.config/ask/config.json`) supported but discouraged
+- **Single-entry machines** (native Linux, WSL used only as a terminal): env vars in `~/.bashrc` are canonical; config file values are used only when the env var is absent.
+- **Dual-entry machines** (WSL invoked from both WSL terminal and PowerShell via `wsl ask`): env vars alone **do not work** because non-interactive bash spawned by `wsl.exe` doesn't source `~/.bashrc`. API keys must live in `~/.config/ask/config.json`. Having them in both places is fine — env vars still win in interactive WSL.
 - Config file is chmod 0o600; `_check_permissions` warns if loose
 - Data dirs chmod 0o700; history/saved/stats/commands.log all chmod 0o600 (v2.3.2)
 
