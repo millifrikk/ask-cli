@@ -40,13 +40,17 @@ class OpenAIProvider(BaseProvider):
         if system_prompt:
             all_messages = [{"role": "system", "content": system_prompt}] + all_messages
 
-        # TODO: o1 models don't support system messages and use max_completion_tokens instead
+        token_kwarg = (
+            "max_completion_tokens"
+            if model.startswith(("gpt-5", "o1", "o3", "o4"))
+            else "max_tokens"
+        )
         try:
             stream = client.chat.completions.create(
                 model=model,
-                max_tokens=max_tokens,
                 messages=all_messages,  # type: ignore[arg-type]
                 stream=True,
+                **{token_kwarg: max_tokens},
             )
             for chunk in stream:
                 delta = chunk.choices[0].delta if chunk.choices else None

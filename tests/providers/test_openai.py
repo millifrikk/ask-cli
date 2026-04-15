@@ -80,6 +80,41 @@ class TestOpenAIProvider:
             assert messages[0]["content"] == "Be terse."
             assert messages[1]["role"] == "user"
 
+    def test_legacy_model_uses_max_tokens(self, openai_provider):
+        with patch.object(openai_provider, "_get_client") as mock_get_client:
+            mock_client = MagicMock()
+            mock_get_client.return_value = mock_client
+            mock_client.chat.completions.create.return_value = iter([])
+
+            list(openai_provider.stream([{"role": "user", "content": "hi"}], "gpt-4o", 123))
+
+            call_kwargs = mock_client.chat.completions.create.call_args[1]
+            assert call_kwargs["max_tokens"] == 123
+            assert "max_completion_tokens" not in call_kwargs
+
+    def test_gpt5_model_uses_max_completion_tokens(self, openai_provider):
+        with patch.object(openai_provider, "_get_client") as mock_get_client:
+            mock_client = MagicMock()
+            mock_get_client.return_value = mock_client
+            mock_client.chat.completions.create.return_value = iter([])
+
+            list(openai_provider.stream([{"role": "user", "content": "hi"}], "gpt-5.4-mini", 123))
+
+            call_kwargs = mock_client.chat.completions.create.call_args[1]
+            assert call_kwargs["max_completion_tokens"] == 123
+            assert "max_tokens" not in call_kwargs
+
+    def test_o1_model_uses_max_completion_tokens(self, openai_provider):
+        with patch.object(openai_provider, "_get_client") as mock_get_client:
+            mock_client = MagicMock()
+            mock_get_client.return_value = mock_client
+            mock_client.chat.completions.create.return_value = iter([])
+
+            list(openai_provider.stream([{"role": "user", "content": "hi"}], "o1-mini", 123))
+
+            call_kwargs = mock_client.chat.completions.create.call_args[1]
+            assert call_kwargs["max_completion_tokens"] == 123
+
     def test_missing_api_key_raises_provider_error(self):
         provider = OpenAIProvider(ProviderConfig(api_key=""))
         with pytest.raises(ProviderError, match="not configured"):
