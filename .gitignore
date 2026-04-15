@@ -40,9 +40,10 @@ config.json
 # Claude Code session pointers
 last_session.txt
 
-# Audit reports — dev artifacts, keep local
+# Audit reports / security-scan outputs — dev artifacts, keep local
 /*AUDIT*.md
 /AUDIT-REPORT.md
+/SEMGREP-SCAN.md
 
 # Plan docs in docs/plans/ are symlinks to ~/.claude/plans/ —
 # dev-only, don't resolve on other clones
