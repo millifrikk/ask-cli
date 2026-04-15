@@ -70,14 +70,37 @@ PROVIDER_CLASSES: dict[str, type[BaseProvider]] = {
 }
 
 
+def _invocation_is_interactive_wsl() -> bool:
+    """True if we're in an interactive WSL shell — user typed this, not proxied by wsl.exe.
+
+    Heuristic: we're in WSL (`WSL_DISTRO_NAME` or `WSL_INTEROP` set) AND at least
+    one of stdin/stdout is a TTY. When `wsl.exe <cmd>` is spawned from Windows
+    PowerShell, neither stdin nor stdout is a TTY — they're pipes to the Windows
+    parent process.
+    """
+    try:
+        in_wsl = bool(os.environ.get("WSL_DISTRO_NAME") or os.environ.get("WSL_INTEROP"))
+        has_tty = sys.stdin.isatty() or sys.stdout.isatty()
+        return in_wsl and has_tty
+    except (AttributeError, OSError):
+        return False
+
+
 def _select_base_system_prompt(defaults: DefaultsConfig) -> str:
     """Pick the system prompt for the current invocation context.
 
-    `ASK_CONTEXT=windows` (set by the PowerShell wrapper and propagated via
-    WSLENV) selects the Windows/general prompt; anything else uses the Linux
-    default. Falls back to the Linux prompt if the Windows variant is empty.
+    `ASK_CONTEXT=windows` selects the Windows/general prompt; anything else uses
+    the Linux default. Set by the PowerShell wrapper (Path A) or the User-scope
+    env var + WSLENV propagation (Path B).
+
+    Because `WSLENV=ASK_CONTEXT/u` propagates the value into *every* WSL session
+    — not just ones spawned by `wsl.exe` from PowerShell — we additionally
+    override back to Linux when we can detect the user is typing directly in an
+    interactive WSL terminal.
     """
     context = os.environ.get("ASK_CONTEXT", "linux").lower()
+    if context == "windows" and _invocation_is_interactive_wsl():
+        context = "linux"
     if context == "windows" and defaults.system_prompt_windows:
         return defaults.system_prompt_windows
     return defaults.system_prompt

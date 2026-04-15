@@ -6,6 +6,21 @@ follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.3.3] — 2026-04-15
+
+### Fixed
+- Interactive WSL shells no longer receive the Windows system prompt when
+  `ASK_CONTEXT=windows` has been propagated via `WSLENV=ASK_CONTEXT/u`.
+  Previously the User-scope env var leaked `ASK_CONTEXT=windows` into every
+  WSL session — including terminals a user typed into directly — and
+  ask-cli had no way to tell "called from PowerShell via `wsl.exe`" from
+  "typed into a WSL terminal". A new `_invocation_is_interactive_wsl()`
+  heuristic checks for a WSL marker (`WSL_DISTRO_NAME` / `WSL_INTEROP`)
+  plus at least one of stdin/stdout being a TTY — if both are true, the
+  Windows context is overridden back to Linux. `wsl.exe`-proxied
+  invocations have no TTY anywhere and stay Windows-first as intended.
+  Explicit `ASK_CONTEXT=linux` overrides always win.
+
 ## [2.3.2] — 2026-04-15
 
 ### Security
@@ -148,7 +163,8 @@ follows [SemVer](https://semver.org/).
   OpenAI, Google Gemini, Ollama), streaming, domain modes, conversation
   history, save/recall, agent mode, and XDG-compliant config.
 
-[Unreleased]: https://github.com/millifrikk/ask-cli/compare/v2.3.2...HEAD
+[Unreleased]: https://github.com/millifrikk/ask-cli/compare/v2.3.3...HEAD
+[2.3.3]: https://github.com/millifrikk/ask-cli/compare/v2.3.2...v2.3.3
 [2.3.2]: https://github.com/millifrikk/ask-cli/compare/v2.3.1...v2.3.2
 [2.3.1]: https://github.com/millifrikk/ask-cli/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/millifrikk/ask-cli/compare/v2.2.4...v2.3.0

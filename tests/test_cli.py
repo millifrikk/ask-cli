@@ -508,14 +508,17 @@ def test_default_context_uses_linux_system_prompt():
 
 
 def test_windows_context_uses_windows_system_prompt():
-    """ASK_CONTEXT=windows selects the Windows prompt."""
+    """ASK_CONTEXT=windows selects the Windows prompt when not in an interactive WSL shell."""
     from ask_cli.cli import _select_base_system_prompt
 
     defaults = DefaultsConfig(
         system_prompt="LINUX_PROMPT",
         system_prompt_windows="WINDOWS_PROMPT",
     )
-    with patch.dict("os.environ", {"ASK_CONTEXT": "windows"}):
+    with (
+        patch.dict("os.environ", {"ASK_CONTEXT": "windows"}),
+        patch("ask_cli.cli._invocation_is_interactive_wsl", return_value=False),
+    ):
         assert _select_base_system_prompt(defaults) == "WINDOWS_PROMPT"
 
 
@@ -527,7 +530,10 @@ def test_windows_context_case_insensitive():
         system_prompt="LINUX_PROMPT",
         system_prompt_windows="WINDOWS_PROMPT",
     )
-    with patch.dict("os.environ", {"ASK_CONTEXT": "WINDOWS"}):
+    with (
+        patch.dict("os.environ", {"ASK_CONTEXT": "WINDOWS"}),
+        patch("ask_cli.cli._invocation_is_interactive_wsl", return_value=False),
+    ):
         assert _select_base_system_prompt(defaults) == "WINDOWS_PROMPT"
 
 
@@ -539,7 +545,10 @@ def test_windows_context_falls_back_when_windows_prompt_empty():
         system_prompt="LINUX_PROMPT",
         system_prompt_windows="",
     )
-    with patch.dict("os.environ", {"ASK_CONTEXT": "windows"}):
+    with (
+        patch.dict("os.environ", {"ASK_CONTEXT": "windows"}),
+        patch("ask_cli.cli._invocation_is_interactive_wsl", return_value=False),
+    ):
         assert _select_base_system_prompt(defaults) == "LINUX_PROMPT"
 
 
@@ -553,6 +562,91 @@ def test_unknown_context_falls_back_to_linux():
     )
     with patch.dict("os.environ", {"ASK_CONTEXT": "mac"}):
         assert _select_base_system_prompt(defaults) == "LINUX_PROMPT"
+
+
+def test_interactive_wsl_overrides_windows_context():
+    """In an interactive WSL terminal, ASK_CONTEXT=windows (leaked via WSLENV) is ignored."""
+    from ask_cli.cli import _select_base_system_prompt
+
+    defaults = DefaultsConfig(
+        system_prompt="LINUX_PROMPT",
+        system_prompt_windows="WINDOWS_PROMPT",
+    )
+    with (
+        patch.dict("os.environ", {"ASK_CONTEXT": "windows"}),
+        patch("ask_cli.cli._invocation_is_interactive_wsl", return_value=True),
+    ):
+        assert _select_base_system_prompt(defaults) == "LINUX_PROMPT"
+
+
+def test_non_interactive_wsl_keeps_windows_context():
+    """wsl.exe from PowerShell: ASK_CONTEXT=windows set, no TTY → Windows prompt."""
+    from ask_cli.cli import _select_base_system_prompt
+
+    defaults = DefaultsConfig(
+        system_prompt="LINUX_PROMPT",
+        system_prompt_windows="WINDOWS_PROMPT",
+    )
+    with (
+        patch.dict("os.environ", {"ASK_CONTEXT": "windows"}),
+        patch("ask_cli.cli._invocation_is_interactive_wsl", return_value=False),
+    ):
+        assert _select_base_system_prompt(defaults) == "WINDOWS_PROMPT"
+
+
+class TestInvocationIsInteractiveWsl:
+    """The heuristic itself."""
+
+    def test_requires_wsl_marker(self):
+        from ask_cli.cli import _invocation_is_interactive_wsl
+
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch("sys.stdin.isatty", return_value=True),
+            patch("sys.stdout.isatty", return_value=True),
+        ):
+            assert _invocation_is_interactive_wsl() is False
+
+    def test_requires_tty(self):
+        from ask_cli.cli import _invocation_is_interactive_wsl
+
+        with (
+            patch.dict("os.environ", {"WSL_DISTRO_NAME": "Ubuntu"}, clear=True),
+            patch("sys.stdin.isatty", return_value=False),
+            patch("sys.stdout.isatty", return_value=False),
+        ):
+            assert _invocation_is_interactive_wsl() is False
+
+    def test_wsl_plus_stdin_tty_is_interactive(self):
+        from ask_cli.cli import _invocation_is_interactive_wsl
+
+        with (
+            patch.dict("os.environ", {"WSL_DISTRO_NAME": "Ubuntu"}, clear=True),
+            patch("sys.stdin.isatty", return_value=True),
+            patch("sys.stdout.isatty", return_value=False),
+        ):
+            assert _invocation_is_interactive_wsl() is True
+
+    def test_wsl_plus_stdout_tty_is_interactive(self):
+        """Redirected stdin but terminal stdout — user did `echo foo | ask` in WSL."""
+        from ask_cli.cli import _invocation_is_interactive_wsl
+
+        with (
+            patch.dict("os.environ", {"WSL_DISTRO_NAME": "Ubuntu"}, clear=True),
+            patch("sys.stdin.isatty", return_value=False),
+            patch("sys.stdout.isatty", return_value=True),
+        ):
+            assert _invocation_is_interactive_wsl() is True
+
+    def test_wsl_interop_also_counts_as_wsl_marker(self):
+        from ask_cli.cli import _invocation_is_interactive_wsl
+
+        with (
+            patch.dict("os.environ", {"WSL_INTEROP": "/run/WSL/42"}, clear=True),
+            patch("sys.stdin.isatty", return_value=True),
+            patch("sys.stdout.isatty", return_value=True),
+        ):
+            assert _invocation_is_interactive_wsl() is True
 
 
 def test_set_default_provider_chmods_config(tmp_path):

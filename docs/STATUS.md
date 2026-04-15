@@ -2,21 +2,21 @@
 
 Living document. Update when we make meaningful changes so the next session can pick up without excavating chat history.
 
-**Last updated:** 2026-04-15 · **Version:** v2.3.2
+**Last updated:** 2026-04-15 · **Version:** v2.3.3
 
 ---
 
 ## Current version
 
-**v2.3.2** — File-I/O permission hardening, completing the pre-release security work.
+**v2.3.3** — Fixed interactive WSL shell incorrectly getting Windows prompt when `ASK_CONTEXT` propagates via WSLENV.
 
 ```bash
-ask --version  # ask 2.3.2
+ask --version  # ask 2.3.3
 ```
 
 Release history:
 `v2.0.0` → `v2.1.0` → `v2.2.0` → `v2.2.1` → `v2.2.2` → `v2.2.3` → `v2.2.4` →
-`v2.3.0` → `v2.3.1` → `v2.3.2`. All tags pushed; GitHub releases created for each.
+`v2.3.0` → `v2.3.1` → `v2.3.2` → `v2.3.3`. All tags pushed; GitHub releases created for each.
 
 ---
 
@@ -141,7 +141,7 @@ Audit artifacts (`AUDIT-REPORT.md`, `FILE-IO-AUDIT.md`, `GIT-HISTORY-SECRETS-AUD
 - [x] ~~Clean up duplicate `export PATH` lines in WSL `~/.bashrc` (cosmetic)~~ Done 2026-04-15 via `/tmp/dedupe-command.txt` heredoc — all duplicate exports deduped.
 
 ### Process improvements we discussed but didn't wire up
-- [ ] Auto-detect non-interactive WSL shells from Windows for more robust context detection (alternative to `ASK_CONTEXT` env var propagation)
+- [x] ~~Auto-detect non-interactive WSL shells from Windows for more robust context detection~~ Shipped in v2.3.3 — `_invocation_is_interactive_wsl()` heuristic overrides `ASK_CONTEXT=windows` back to Linux when both (a) we're in WSL and (b) at least one of stdin/stdout is a TTY.
 - [ ] Provider fallback chain on 401/403/429 (e.g. Anthropic → Z.ai → error)
 
 ---
