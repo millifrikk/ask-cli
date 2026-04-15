@@ -9,9 +9,22 @@ ask --cmd "restart nginx"          # generates + copies the command
 ask -c "and how about for the last 7 days"   # continue the conversation
 ```
 
-## Why
+## Why ask-cli exists
 
-Most CLI AI tools are thin wrappers around one model. ask-cli is built around the reality of daily terminal work: you want quick answers without leaving the shell, tiered models for cost control, context-aware prompts depending on where you're running, and clipboard-friendly output that triple-click can copy cleanly.
+The terminal AI tool space is full of excellent session-based assistants — `claude`, `gemini`, `codex`, and others are purpose-built for agentic coding workflows, long-running conversations, and tool-calling loops. They load you into a dedicated environment and drive the experience from there. That's the right design for those use cases.
+
+ask-cli was built for a different moment: you're mid-command in your shell, you want a one-line answer or a generated command, and you want the response to appear in the same terminal you're already in — not in a new app, not in a wrapped UI, not in a session you have to exit. `ask "..."` streams the answer into stdout and returns you to your prompt. It's a plain pipe between you and a model, nothing in between.
+
+That framing shaped every design decision:
+
+- **Multi-provider** — Anthropic, OpenAI, Google, Z.ai, Ollama — pick the cheapest model that answers the question well
+- **Always streaming** — responses feel immediate, not a 5-second stall then a wall of text
+- **Click-friendly output** — code blocks render without padded backgrounds so triple-click copies exactly the code
+- **Context-aware prompts** — the system prompt adapts when invoked from Windows-via-WSL vs. a native Linux shell
+- **`--cmd` and `--execute`** — generate a command with no prose, copy it, optionally run it (with safety checks on destructive patterns)
+- **Short flags for short needs** — `--quick` for terse answers, `--smart` to escalate to the better model, `-c` to continue the last conversation
+
+If you live in the shell and want an AI assistant that stays out of your way, this is for you. If you want an agent that drives a multi-file refactor, use one of the dedicated tools — they're better at that.
 
 ---
 
@@ -463,7 +476,7 @@ Group Policy prevents loading `$PROFILE`. Use the User-scope env var approach in
 
 ## License
 
-Proprietary — internal use. Check with the repository owner before distributing.
+[MIT](LICENSE) — use it, fork it, ship it. Attribution appreciated but not required.
 
 ---
 
