@@ -94,8 +94,11 @@ editor if you need to inspect raw content.
 - **API keys:** read from environment variables (`ASK_*_API_KEY`)
   or `~/.config/ask/config.json` (chmod 600). Env vars take precedence.
 - **Conversation history, saved responses, stats, command logs:** live
-  in `~/.local/share/ask/` and are written chmod 600. On multi-user
-  systems, other local accounts cannot read them.
+  in `~/.local/share/ask/` (chmod 700) and are written chmod 600. The
+  `saved/` subdir is also chmod 700 so filenames cannot be enumerated
+  by other local users. A one-shot migration on every `load_config()`
+  call tightens any pre-existing files/dirs with looser permissions —
+  upgrading from an earlier version requires no user action.
 - **Provider `base_url`:** warns at load time if the URL is not
   `https://` or `http://localhost` — an attacker-controlled `base_url`
   would otherwise exfiltrate the API key on the next request.

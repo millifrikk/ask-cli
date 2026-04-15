@@ -132,6 +132,26 @@ def test_log_silent_on_oserror(tmp_path):
         log_command("ls", log_path)
 
 
+def test_log_sets_mode_0600_on_create(tmp_path):
+    log_path = tmp_path / "commands.log"
+    log_command("ls -la", log_path)
+    mode = log_path.stat().st_mode & 0o777
+    assert mode == 0o600
+
+
+def test_log_retightens_loose_perms_on_append(tmp_path):
+    """Even if the log was created before the chmod was added, any subsequent
+    append should bring the mode down to 0o600."""
+    log_path = tmp_path / "commands.log"
+    log_path.write_text("[old] ls\n")
+    log_path.chmod(0o644)  # simulate pre-v2.3.0 creation
+
+    log_command("new command", log_path)
+
+    mode = log_path.stat().st_mode & 0o777
+    assert mode == 0o600
+
+
 def test_extract_first_code_block_returns_content():
     response = "Here is a script:\n```python\nprint('hello')\n```"
     result = extract_first_code_block(response)

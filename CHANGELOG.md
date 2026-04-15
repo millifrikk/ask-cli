@@ -6,6 +6,27 @@ follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.3.2] — 2026-04-15
+
+### Security
+- `~/.config/ask/` and `~/.local/share/ask/` (including `saved/`) are now
+  created with `0o700`, preventing other local users from enumerating
+  filenames in the saved-responses directory. Previously only file
+  *contents* were protected (0o600); listings were world-readable by
+  default under typical umasks.
+- `--set-default-provider` now re-applies `chmod 0o600` after rewriting
+  `config.json`. Previously, a rewrite could leave the file with looser
+  permissions if it had been copied in or tampered with.
+- `log_command()` in the `--cmd --execute` and `--agent` flows now
+  applies `chmod 0o600` on every append, not only on first creation.
+  Previously, a pre-v2.3.0 `executed_commands.log` retained its
+  original 0o644 permissions forever (observed in the wild on the dev
+  host during audit).
+- Added one-shot permission migration on every `load_config()` call.
+  Pre-existing files and dirs with group/other bits set are tightened
+  to 0o600 (files) or 0o700 (dirs) automatically. No user action
+  required to adopt v2.3.2 security posture.
+
 ## [2.3.1] — 2026-04-15
 
 ### Security
@@ -127,7 +148,8 @@ follows [SemVer](https://semver.org/).
   OpenAI, Google Gemini, Ollama), streaming, domain modes, conversation
   history, save/recall, agent mode, and XDG-compliant config.
 
-[Unreleased]: https://github.com/millifrikk/ask-cli/compare/v2.3.1...HEAD
+[Unreleased]: https://github.com/millifrikk/ask-cli/compare/v2.3.2...HEAD
+[2.3.2]: https://github.com/millifrikk/ask-cli/compare/v2.3.1...v2.3.2
 [2.3.1]: https://github.com/millifrikk/ask-cli/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/millifrikk/ask-cli/compare/v2.2.4...v2.3.0
 [2.2.4]: https://github.com/millifrikk/ask-cli/compare/v2.2.3...v2.2.4

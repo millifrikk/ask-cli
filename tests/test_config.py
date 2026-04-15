@@ -174,3 +174,51 @@ def test_base_url_weird_scheme_warns():
     with patch("ask_cli.output.render_warning") as mock_warn:
         _validate_base_url("zai", "ftp://api.example.com")
         mock_warn.assert_called_once()
+
+
+class TestMigratePermissions:
+    def test_tightens_loose_data_file(self, tmp_path, monkeypatch):
+        fake_data = tmp_path / "data"
+        fake_data.mkdir(mode=0o755)
+        fake_hist = fake_data / "history.json"
+        fake_hist.write_text("{}")
+        fake_hist.chmod(0o644)
+
+        monkeypatch.setattr("ask_cli.config._data_dir", lambda: fake_data)
+        monkeypatch.setattr("ask_cli.config.HISTORY_PATH", fake_hist)
+        monkeypatch.setattr("ask_cli.config.COMMANDS_LOG_PATH", fake_data / "missing.log")
+        monkeypatch.setattr("ask_cli.config.USAGE_STATS_PATH", fake_data / "missing.json")
+        monkeypatch.setattr("ask_cli.config.SAVED_DIR", fake_data / "saved-missing")
+        monkeypatch.setattr("ask_cli.config.TEMPLATES_DIR", fake_data / "templates-missing")
+        monkeypatch.setattr("ask_cli.config.CONFIG_PATH", fake_data / "config-missing.json")
+        monkeypatch.setattr("ask_cli.config._config_dir", lambda: fake_data / "config-missing-dir")
+
+        from ask_cli.config import _migrate_permissions
+
+        _migrate_permissions()
+
+        assert fake_hist.stat().st_mode & 0o777 == 0o600
+        assert fake_data.stat().st_mode & 0o777 == 0o700
+
+    def test_leaves_already_tight_files_alone(self, tmp_path, monkeypatch):
+        fake_data = tmp_path / "data"
+        fake_data.mkdir(mode=0o700)
+        fake_stats = fake_data / "stats.json"
+        fake_stats.write_text("{}")
+        fake_stats.chmod(0o600)
+
+        monkeypatch.setattr("ask_cli.config._data_dir", lambda: fake_data)
+        monkeypatch.setattr("ask_cli.config.USAGE_STATS_PATH", fake_stats)
+        monkeypatch.setattr("ask_cli.config.HISTORY_PATH", fake_data / "h-missing.json")
+        monkeypatch.setattr("ask_cli.config.COMMANDS_LOG_PATH", fake_data / "log-missing.log")
+        monkeypatch.setattr("ask_cli.config.SAVED_DIR", fake_data / "saved-missing")
+        monkeypatch.setattr("ask_cli.config.TEMPLATES_DIR", fake_data / "templates-missing")
+        monkeypatch.setattr("ask_cli.config.CONFIG_PATH", fake_data / "config-missing.json")
+        monkeypatch.setattr("ask_cli.config._config_dir", lambda: fake_data / "config-missing-dir")
+
+        from ask_cli.config import _migrate_permissions
+
+        _migrate_permissions()
+
+        assert fake_stats.stat().st_mode & 0o777 == 0o600
+        assert fake_data.stat().st_mode & 0o777 == 0o700

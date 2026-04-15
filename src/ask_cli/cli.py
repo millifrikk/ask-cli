@@ -134,6 +134,7 @@ def _handle_set_default_provider(provider_name: str) -> None:
         raw = json.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
         raw["default_provider"] = provider_name
         CONFIG_PATH.write_text(json.dumps(raw, indent=2))
+        CONFIG_PATH.chmod(0o600)
         render_info(f"Default provider set to '{provider_name}'.")
     except (OSError, json.JSONDecodeError) as e:
         render_error(f"Failed to update config: {e}")

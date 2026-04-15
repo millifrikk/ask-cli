@@ -30,6 +30,12 @@ def test_save_writes_mode_0600(saved_dir):
     assert mode == 0o600
 
 
+def test_saved_dir_chmod_0700(saved_dir):
+    save_response("myanswer", "q", "r", saved_dir)
+    mode = saved_dir.stat().st_mode & 0o777
+    assert mode == 0o700
+
+
 def test_recall_not_found_raises(saved_dir):
     with pytest.raises(SavedResponseError, match="No saved response"):
         recall_response("missing", saved_dir)

@@ -71,12 +71,10 @@ def log_command(command: str, log_path: Path) -> None:
 
     try:
         log_path.parent.mkdir(parents=True, exist_ok=True)
-        is_new = not log_path.exists()
         timestamp = datetime.now(UTC).isoformat()
         with log_path.open("a") as f:
             f.write(f"[{timestamp}] {command}\n")
-        if is_new:
-            log_path.chmod(0o600)
+        log_path.chmod(0o600)
     except OSError:
         pass
 

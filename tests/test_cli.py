@@ -553,3 +553,24 @@ def test_unknown_context_falls_back_to_linux():
     )
     with patch.dict("os.environ", {"ASK_CONTEXT": "mac"}):
         assert _select_base_system_prompt(defaults) == "LINUX_PROMPT"
+
+
+def test_set_default_provider_chmods_config(tmp_path):
+    """--set-default-provider must re-apply chmod 600 after rewriting config.json."""
+    import json
+
+    from ask_cli.cli import _handle_set_default_provider
+
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps({"default_provider": "zai"}))
+    config_path.chmod(0o644)  # simulate loose perms
+
+    with (
+        patch("ask_cli.cli.CONFIG_PATH", config_path),
+        patch("ask_cli.cli.render_info"),
+        patch("ask_cli.cli.render_error"),
+    ):
+        _handle_set_default_provider("anthropic")
+
+    mode = config_path.stat().st_mode & 0o777
+    assert mode == 0o600

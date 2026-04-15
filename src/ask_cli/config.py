@@ -1,5 +1,6 @@
 """Configuration loading, XDG paths, and dataclasses for ask-cli."""
 
+import contextlib
 import json
 import os
 import stat
@@ -207,8 +208,15 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return result
 
 
+def _ensure_private_dir(path: Path) -> None:
+    """Create path and chmod 0o700 so other local users cannot enumerate its contents."""
+    path.mkdir(parents=True, exist_ok=True)
+    with contextlib.suppress(OSError):
+        path.chmod(0o700)
+
+
 def _write_default_config(path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    _ensure_private_dir(path.parent)
     path.write_text(json.dumps(DEFAULT_CONFIG, indent=2))
     path.chmod(0o600)
 
@@ -221,6 +229,26 @@ def _check_permissions(path: Path) -> None:
         from ask_cli.output import render_warning
 
         render_warning(f"Config file {path} is readable by group/others. Run: chmod 600 {path}")
+
+
+def _migrate_permissions() -> None:
+    """Tighten permissions on pre-existing user-data files and dirs that were created
+    before v2.3.x. Cheap (a few stat/chmod syscalls). Silent on any failure."""
+    for d in (_config_dir(), _data_dir(), SAVED_DIR, TEMPLATES_DIR):
+        if d.exists():
+            with contextlib.suppress(OSError):
+                if d.stat().st_mode & 0o077:
+                    d.chmod(0o700)
+    for f in (HISTORY_PATH, COMMANDS_LOG_PATH, USAGE_STATS_PATH, CONFIG_PATH):
+        if f.exists():
+            with contextlib.suppress(OSError):
+                if f.stat().st_mode & 0o077:
+                    f.chmod(0o600)
+    if SAVED_DIR.exists():
+        for entry in SAVED_DIR.glob("*.json"):
+            with contextlib.suppress(OSError):
+                if entry.stat().st_mode & 0o077:
+                    entry.chmod(0o600)
 
 
 def _apply_env_overrides(raw: dict) -> dict:
@@ -274,6 +302,8 @@ def _parse_provider_config(data: dict, provider_name: str = "") -> ProviderConfi
 
 def load_config(config_path: Path = CONFIG_PATH) -> AppConfig:
     """Load config from disk, creating defaults on first run."""
+    _migrate_permissions()
+
     if not config_path.exists():
         _write_default_config(config_path)
     else:

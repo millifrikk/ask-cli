@@ -1,5 +1,6 @@
 """Persist and retrieve named AI responses to/from disk."""
 
+import contextlib
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -24,6 +25,8 @@ def save_response(name: str, query: str, response: str, saved_dir: Path) -> None
     """Write a named response entry to {saved_dir}/{name}.json."""
     _validate_name(name)
     saved_dir.mkdir(parents=True, exist_ok=True)
+    with contextlib.suppress(OSError):
+        saved_dir.chmod(0o700)
     entry = {
         "name": name,
         "query": query,
