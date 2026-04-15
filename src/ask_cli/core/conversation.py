@@ -33,6 +33,9 @@ def run_query(
     # renders inline during streaming (no double output regardless of length).
     code_only = output_mode == "code"
 
+    if not code_only and console.is_terminal:
+        console.rule("ask", align="left", style="dim", characters="─")
+
     try:
         with Live(
             console=console,
