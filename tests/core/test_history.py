@@ -84,6 +84,16 @@ def test_save_roundtrip(history_path):
     assert data["messages"][0] == {"role": "user", "content": "hello"}
 
 
+def test_save_writes_mode_0600(history_path):
+    h = ConversationHistory(history_path, ttl_hours=1)
+    h.start_new()
+    h.add_user_message("secret stuff")
+    h.save()
+
+    mode = history_path.stat().st_mode & 0o777
+    assert mode == 0o600
+
+
 def test_clear_removes_file_and_starts_fresh(history_path):
     h = ConversationHistory(history_path, ttl_hours=1)
     h.start_new()

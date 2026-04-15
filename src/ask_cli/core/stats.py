@@ -49,6 +49,7 @@ def record_query(
 
         stats_path.parent.mkdir(parents=True, exist_ok=True)
         stats_path.write_text(json.dumps(stats, indent=2))
+        stats_path.chmod(0o600)
     except OSError:
         pass
 
@@ -58,5 +59,6 @@ def reset_stats(stats_path: Path) -> None:
     try:
         stats_path.parent.mkdir(parents=True, exist_ok=True)
         stats_path.write_text(json.dumps(dict(EMPTY_STATS), indent=2))
+        stats_path.chmod(0o600)
     except OSError:
         pass

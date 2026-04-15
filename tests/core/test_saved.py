@@ -23,6 +23,13 @@ def test_save_and_recall_roundtrip(saved_dir):
     assert "timestamp" in entry
 
 
+def test_save_writes_mode_0600(saved_dir):
+    save_response("myanswer", "my query", "my response", saved_dir)
+    path = saved_dir / "myanswer.json"
+    mode = path.stat().st_mode & 0o777
+    assert mode == 0o600
+
+
 def test_recall_not_found_raises(saved_dir):
     with pytest.raises(SavedResponseError, match="No saved response"):
         recall_response("missing", saved_dir)

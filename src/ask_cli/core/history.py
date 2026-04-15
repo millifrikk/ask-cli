@@ -79,6 +79,7 @@ class ConversationHistory:
                 "messages": self._messages,
             }
             self._path.write_text(json.dumps(data, indent=2))
+            self._path.chmod(0o600)
         except OSError as e:
             raise HistoryError(f"Failed to save conversation history: {e}") from e
 

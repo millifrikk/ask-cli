@@ -21,6 +21,21 @@ DESTRUCTIVE_PATTERNS = [
     r"\breboot\b",
     r"\btruncate\b",
     r"\bwipe\b",
+    r"\bchmod\b",
+    r"\bchown\b",
+    r"\bchattr\b",
+    r"\bsudo\b",
+    r"\bdoas\b",
+    r"\bfind\b.*\s-delete\b",
+    r"\bfind\b.*\s-exec\b",
+    r"\bgit\s+reset\s+--hard\b",
+    r"\bgit\s+clean\b",
+    r"\bgit\s+push\b.*--force\b",
+    r"\bgit\s+push\b.*-f\b",
+    r"\b(curl|wget|fetch)\b[^|]*\|\s*(sh|bash|zsh|fish)\b",
+    r"\btee\b\s+(-a\s+)?/(etc|boot|usr|bin|sbin|dev)\b",
+    r">>?\s*/(etc|boot|usr|bin|sbin|dev)\b",
+    r":\(\)\s*\{.*\|.*\}",  # fork bomb
 ]
 
 _FENCE_RE = re.compile(r"```(?:bash|sh|shell)?\n(.*?)```", re.DOTALL)
@@ -57,9 +72,12 @@ def log_command(command: str, log_path: Path) -> None:
 
     try:
         log_path.parent.mkdir(parents=True, exist_ok=True)
+        is_new = not log_path.exists()
         timestamp = datetime.now(UTC).isoformat()
         with log_path.open("a") as f:
             f.write(f"[{timestamp}] {command}\n")
+        if is_new:
+            log_path.chmod(0o600)
     except OSError:
         pass
 

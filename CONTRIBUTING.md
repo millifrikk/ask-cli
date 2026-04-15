@@ -62,8 +62,20 @@ Coverage target is 75%+ on core modules. If your change adds new behaviour, add 
 - **Conventional commit messages** — `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`
 - **No secrets or API keys** — never commit `~/.config/ask/config.json` or any file containing credentials
 - **Update the README** if your change affects user-facing behaviour or adds a new flag
+- **Update the CHANGELOG** under the `[Unreleased]` section
 
 Small, focused PRs get merged faster than large ones. If you're unsure whether something is worth building, open an issue first.
+
+### Code style
+
+ask-cli follows the conventions documented in `CLAUDE.md`. Worth knowing up front:
+
+- **No docstrings.** The project's style is self-documenting code via clear naming, with inline comments only where logic is non-obvious. Don't add docstrings to functions/classes you're touching — they'll be removed in review.
+- **No `print()`.** All user-facing output goes through `rich.Console` via helpers in `ask_cli/output.py`.
+- **Typed signatures, pragmatic locals.** Annotate function signatures and class attributes; skip obvious locals (`count = 0`, `items = []`).
+- **`X | Y` over `Optional[X]`** — Python 3.10+ union syntax, always.
+- **100-character line length**, double quotes, ruff-formatted.
+- **Security reports.** If you find a vulnerability, please follow `SECURITY.md` rather than filing a public issue.
 
 ---
 

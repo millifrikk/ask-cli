@@ -17,6 +17,13 @@ def test_record_creates_file(tmp_path):
     assert path.exists()
 
 
+def test_record_writes_mode_0600(tmp_path):
+    path = tmp_path / "stats.json"
+    record_query(path, "default", 10, 20)
+    mode = path.stat().st_mode & 0o777
+    assert mode == 0o600
+
+
 def test_record_increments_total_queries(tmp_path):
     path = tmp_path / "stats.json"
     record_query(path, "default", 10, 20)

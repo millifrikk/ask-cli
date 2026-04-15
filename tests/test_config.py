@@ -10,6 +10,7 @@ import pytest
 from ask_cli.config import (
     AppConfig,
     _deep_merge,
+    _validate_base_url,
     load_config,
     resolve_model,
 )
@@ -137,3 +138,39 @@ def test_default_config_includes_windows_system_prompt(tmp_path):
     config = load_config(config_path)  # creates DEFAULT_CONFIG on first run
     assert "Windows" in config.defaults.system_prompt_windows
     assert "WSL" in config.defaults.system_prompt_windows
+
+
+def test_base_url_https_no_warning():
+    with patch("ask_cli.output.render_warning") as mock_warn:
+        _validate_base_url("zai", "https://api.z.ai/api/anthropic")
+        mock_warn.assert_not_called()
+
+
+def test_base_url_localhost_no_warning():
+    with patch("ask_cli.output.render_warning") as mock_warn:
+        _validate_base_url("ollama", "http://localhost:11434")
+        mock_warn.assert_not_called()
+
+
+def test_base_url_127_no_warning():
+    with patch("ask_cli.output.render_warning") as mock_warn:
+        _validate_base_url("ollama", "http://127.0.0.1:11434")
+        mock_warn.assert_not_called()
+
+
+def test_base_url_empty_no_warning():
+    with patch("ask_cli.output.render_warning") as mock_warn:
+        _validate_base_url("anthropic", "")
+        mock_warn.assert_not_called()
+
+
+def test_base_url_plain_http_warns():
+    with patch("ask_cli.output.render_warning") as mock_warn:
+        _validate_base_url("zai", "http://attacker.example.com/api")
+        mock_warn.assert_called_once()
+
+
+def test_base_url_weird_scheme_warns():
+    with patch("ask_cli.output.render_warning") as mock_warn:
+        _validate_base_url("zai", "ftp://api.example.com")
+        mock_warn.assert_called_once()

@@ -239,10 +239,33 @@ def _apply_env_overrides(raw: dict) -> dict:
     return raw
 
 
-def _parse_provider_config(data: dict) -> ProviderConfig:
+def _validate_base_url(provider_name: str, base_url: str) -> None:
+    """Warn if base_url scheme is unusual — an attacker-controlled URL would exfiltrate the API key.
+
+    Accepts https:// (any host) and http:// only for localhost / 127.0.0.1.
+    """
+    if not base_url:
+        return
+    from ask_cli.output import render_warning
+
+    lowered = base_url.lower()
+    if lowered.startswith("https://"):
+        return
+    if lowered.startswith(("http://localhost", "http://127.0.0.1", "http://[::1]")):
+        return
+    render_warning(
+        f"Provider '{provider_name}' base_url is '{base_url}' — unencrypted or non-localhost "
+        "URLs can leak your API key. Use https:// or http://localhost."
+    )
+
+
+def _parse_provider_config(data: dict, provider_name: str = "") -> ProviderConfig:
+    base_url = data.get("base_url", "")
+    if provider_name:
+        _validate_base_url(provider_name, base_url)
     return ProviderConfig(
         api_key=data.get("api_key", ""),
-        base_url=data.get("base_url", ""),
+        base_url=base_url,
         default_model=data.get("default_model", ""),
         fast_model=data.get("fast_model", ""),
         smart_model=data.get("smart_model", ""),
@@ -265,7 +288,7 @@ def load_config(config_path: Path = CONFIG_PATH) -> AppConfig:
     merged = _apply_env_overrides(merged)
 
     providers = {
-        name: _parse_provider_config(provider_data)
+        name: _parse_provider_config(provider_data, provider_name=name)
         for name, provider_data in merged.get("providers", {}).items()
     }
 

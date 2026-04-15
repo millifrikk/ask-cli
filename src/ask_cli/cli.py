@@ -272,7 +272,12 @@ def main() -> None:
         "--dry-run", action="store_true", help="Show command without executing (use with --cmd)"
     )
     cmd_group.add_argument(
-        "--execute", action="store_true", help="Auto-execute safe commands (use with --cmd)"
+        "--execute",
+        action="store_true",
+        help=(
+            "Auto-execute commands that don't match destructive patterns. "
+            "The pattern list is a best-effort allowlist, not a sandbox — review before trusting."
+        ),
     )
 
     # Agent

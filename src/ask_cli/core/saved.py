@@ -31,7 +31,9 @@ def save_response(name: str, query: str, response: str, saved_dir: Path) -> None
         "timestamp": datetime.now(UTC).isoformat(),
     }
     try:
-        (saved_dir / f"{name}.json").write_text(json.dumps(entry, indent=2))
+        path = saved_dir / f"{name}.json"
+        path.write_text(json.dumps(entry, indent=2))
+        path.chmod(0o600)
     except OSError as e:
         raise SavedResponseError(f"Failed to save response '{name}': {e}") from e
 

@@ -36,3 +36,6 @@ Thumbs.db
 .env
 *.env
 config.json
+
+# Claude Code session pointers
+last_session.txt
