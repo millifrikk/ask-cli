@@ -6,6 +6,30 @@ follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.3.1] — 2026-04-15
+
+### Security
+- `extract_command()` no longer falls back to the last non-empty line of
+  the response when no fenced block is present. Previously, if the model
+  ignored the `--cmd` format directive, arbitrary prose could become a
+  shell command under `--execute`. Now returns `None`, producing a clear
+  "Could not extract a command" message instead.
+- Clipboard content (`--copy` and `--copy-code`) is now stripped of
+  trailing newlines (pastejacking: trailing `\n` auto-executes the
+  command when pasted into a shell prompt) and carriage returns
+  (which can hide content from pre-paste previews on some terminals).
+- `--agent` command previews and command outputs are now escaped
+  before being rendered through rich. An LLM that emits `[link=...]`
+  or `[bold red]FAKE[/bold red]` inside a command or output string no
+  longer has those tags rendered by rich — they display as literal
+  text. Prevents UI spoofing during the agent preview.
+
+### Docs
+- `SECURITY.md` expanded with concrete examples of `is_destructive()`
+  regex bypasses (shell obfuscation, user-directory targets, non-`rm`
+  deletion), multi-line fence semantics, prompt-injection risk via
+  attachments, clipboard hygiene, and API-key / user-data storage.
+
 ## [2.3.0] — 2026-04-15
 
 ### Security
@@ -103,7 +127,8 @@ follows [SemVer](https://semver.org/).
   OpenAI, Google Gemini, Ollama), streaming, domain modes, conversation
   history, save/recall, agent mode, and XDG-compliant config.
 
-[Unreleased]: https://github.com/millifrikk/ask-cli/compare/v2.3.0...HEAD
+[Unreleased]: https://github.com/millifrikk/ask-cli/compare/v2.3.1...HEAD
+[2.3.1]: https://github.com/millifrikk/ask-cli/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/millifrikk/ask-cli/compare/v2.2.4...v2.3.0
 [2.2.4]: https://github.com/millifrikk/ask-cli/compare/v2.2.3...v2.2.4
 [2.2.3]: https://github.com/millifrikk/ask-cli/compare/v2.2.2...v2.2.3

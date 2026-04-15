@@ -45,8 +45,9 @@ _ANY_FENCE_RE = re.compile(r"```(?:\w+)?\n(.*?)```", re.DOTALL)
 def extract_command(response: str) -> str | None:
     """Extract the first shell command from a fenced code block.
 
-    Falls back to the last non-empty line if no fence is found.
-    Returns None for empty or whitespace-only input.
+    Returns None if no fenced block is present — previously this fell back to
+    the last non-empty line, which could turn explanatory prose into a shell
+    command when the model didn't follow the CMD_SYSTEM_SUFFIX directive.
     """
     if not response or not response.strip():
         return None
@@ -56,9 +57,7 @@ def extract_command(response: str) -> str | None:
         command = match.group(1).strip()
         return command if command else None
 
-    # Fallback: last non-empty line
-    lines = [line.strip() for line in response.splitlines() if line.strip()]
-    return lines[-1] if lines else None
+    return None
 
 
 def is_destructive(command: str) -> bool:

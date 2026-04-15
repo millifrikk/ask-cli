@@ -124,3 +124,41 @@ def test_run_command_with_output_captures_stdout():
 def test_run_command_with_output_returns_nonzero_exit_code():
     _output, exit_code = run_command_with_output("exit 42")
     assert exit_code == 42
+
+
+def test_agent_escapes_rich_markup_in_command_preview(tmp_path):
+    """Commands containing rich markup metacharacters must not render as markup."""
+    adversarial = "echo [bold red]FAKE ERROR[/bold red]"
+    provider = _make_provider("1. adversarial", f"```bash\n{adversarial}\n```", "DONE")
+    with (
+        patch("ask_cli.core.agent.render_info"),
+        patch("ask_cli.core.agent.render_warning"),
+        patch("ask_cli.core.agent.run_command_with_output", return_value=("", 0)),
+        patch("ask_cli.core.agent.log_command"),
+        patch("ask_cli.core.agent.console.print") as mock_print,
+    ):
+        _run_agent_auto(provider, log_path=tmp_path / "log.txt")
+    # Find the Step line among console.print calls; the raw markup must be escaped
+    step_calls = [c for c in mock_print.call_args_list if "Step" in str(c.args)]
+    assert any(r"\[bold red]" in str(c.args) for c in step_calls), (
+        "Rich markup in command must be escaped, not rendered"
+    )
+
+
+def test_agent_escapes_rich_markup_in_command_output(tmp_path):
+    """Command output containing rich markup must not render as markup."""
+    adversarial_output = "normal line\n[link=http://evil]click[/link]"
+    provider = _make_provider("1. echo x", "```bash\necho x\n```", "DONE")
+    with (
+        patch("ask_cli.core.agent.render_info"),
+        patch("ask_cli.core.agent.render_warning"),
+        patch(
+            "ask_cli.core.agent.run_command_with_output",
+            return_value=(adversarial_output, 0),
+        ),
+        patch("ask_cli.core.agent.log_command"),
+        patch("ask_cli.core.agent.console.print") as mock_print,
+    ):
+        _run_agent_auto(provider, log_path=tmp_path / "log.txt")
+    output_calls = [c for c in mock_print.call_args_list if "link" in str(c.args)]
+    assert any(r"\[link=http://evil]" in str(c.args) for c in output_calls)

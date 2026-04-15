@@ -346,7 +346,7 @@ def test_copy_flag_calls_pyperclip():
         patch("ask_cli.cli.run_query", return_value="full response text"),
         patch("sys.stdin.isatty", return_value=True),
         patch("ask_cli.cli.ConversationHistory") as mock_hist_class,
-        patch("ask_cli.cli.pyperclip.copy") as mock_copy,
+        patch("ask_cli.output.pyperclip.copy") as mock_copy,
         patch("ask_cli.cli.record_query"),
         patch("ask_cli.cli.render_info"),
     ):
@@ -367,7 +367,7 @@ def test_copy_code_flag_extracts_block():
         patch("ask_cli.cli.run_query", return_value=response),
         patch("sys.stdin.isatty", return_value=True),
         patch("ask_cli.cli.ConversationHistory") as mock_hist_class,
-        patch("ask_cli.cli.pyperclip.copy") as mock_copy,
+        patch("ask_cli.output.pyperclip.copy") as mock_copy,
         patch("ask_cli.cli.record_query"),
         patch("ask_cli.cli.render_info"),
     ):
@@ -389,9 +389,12 @@ def test_copy_warns_if_pyperclip_unavailable():
         patch("ask_cli.cli.run_query", return_value="some response"),
         patch("sys.stdin.isatty", return_value=True),
         patch("ask_cli.cli.ConversationHistory") as mock_hist_class,
-        patch("ask_cli.cli.pyperclip.copy", side_effect=pyperclip.PyperclipException("no xclip")),
+        patch(
+            "ask_cli.output.pyperclip.copy",
+            side_effect=pyperclip.PyperclipException("no xclip"),
+        ),
         patch("ask_cli.cli.record_query"),
-        patch("ask_cli.cli.render_warning") as mock_warn,
+        patch("ask_cli.output.render_warning") as mock_warn,
     ):
         mock_hist = MagicMock()
         mock_hist_class.return_value = mock_hist

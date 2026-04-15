@@ -1,5 +1,6 @@
 """Single rich.Console instance and all rendering helpers for ask-cli."""
 
+import pyperclip
 from rich.console import Console
 from rich.markdown import CodeBlock, Markdown
 from rich.panel import Panel
@@ -85,6 +86,22 @@ def render_warning(message: str) -> None:
 def render_info(message: str) -> None:
     """Render an informational message."""
     console.print(f"[dim]{message}[/dim]")
+
+
+def _sanitize_for_clipboard(text: str) -> str:
+    # Trailing \n auto-executes on paste into a shell prompt; \r can hide
+    # content from the pre-paste preview on some terminals.
+    return text.replace("\r", "").rstrip("\n")
+
+
+def copy_to_clipboard(content: str, label: str) -> None:
+    """Copy content to clipboard with pastejacking hygiene and unified error rendering."""
+    safe = _sanitize_for_clipboard(content)
+    try:
+        pyperclip.copy(safe)
+        render_info(f"{label} copied to clipboard.")
+    except pyperclip.PyperclipException as e:
+        render_warning(f"Clipboard unavailable: {e}. Install xclip or xsel.")
 
 
 def render_provider_table(rows: list[tuple[str, str, str]]) -> None:

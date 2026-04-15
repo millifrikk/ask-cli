@@ -4,8 +4,6 @@ import json
 import os
 import sys
 
-import pyperclip
-
 from ask_cli import __version__
 from ask_cli.config import (
     COMMANDS_LOG_PATH,
@@ -43,6 +41,7 @@ from ask_cli.exceptions import (
     TemplateError,
 )
 from ask_cli.output import (
+    copy_to_clipboard,
     disable_color,
     render_error,
     render_info,
@@ -523,20 +522,12 @@ def main() -> None:
 
     # --copy / --copy-code: send response or code block to clipboard
     if args.copy and response:
-        try:
-            pyperclip.copy(response)
-            render_info("Response copied to clipboard.")
-        except pyperclip.PyperclipException as e:
-            render_warning(f"Clipboard unavailable: {e}. Install xclip or xsel.")
+        copy_to_clipboard(response, "Response")
 
     if args.copy_code and response:
         code = extract_first_code_block(response)
         if code:
-            try:
-                pyperclip.copy(code)
-                render_info("Code copied to clipboard.")
-            except pyperclip.PyperclipException as e:
-                render_warning(f"Clipboard unavailable: {e}. Install xclip or xsel.")
+            copy_to_clipboard(code, "Code")
         else:
             render_warning("No code block found in response.")
 

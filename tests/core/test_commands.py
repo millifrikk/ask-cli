@@ -25,9 +25,14 @@ def test_extract_from_sh_fence():
     assert extract_command(response) == "df -h"
 
 
-def test_extract_fallback_last_line():
+def test_extract_returns_none_when_no_fence():
     response = "Some explanation.\nAnother line.\nfind /tmp -name '*.log'"
-    assert extract_command(response) == "find /tmp -name '*.log'"
+    assert extract_command(response) is None
+
+
+def test_extract_returns_none_when_fence_empty():
+    response = "Here:\n```bash\n```"
+    assert extract_command(response) is None
 
 
 def test_extract_empty_returns_none():

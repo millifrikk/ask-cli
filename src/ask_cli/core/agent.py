@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from rich.live import Live
+from rich.markup import escape
 
 from ask_cli.core.commands import (
     extract_command,
@@ -102,7 +103,7 @@ def run_agent(
             render_warning("No command found in agent response. Stopping.")
             break
 
-        console.print(f"[bold]Step {step}/{max_steps}:[/bold] [cyan]{command}[/cyan]")
+        console.print(f"[bold]Step {step}/{max_steps}:[/bold] [cyan]{escape(command)}[/cyan]")
 
         # Confirmation logic
         if is_destructive(command):
@@ -129,7 +130,7 @@ def run_agent(
         output, exit_code = run_command_with_output(command)
 
         if output:
-            console.print(f"[dim]{output}[/dim]")
+            console.print(f"[dim]{escape(output)}[/dim]")
 
         if exit_code != 0:
             render_warning(f"Command failed (exit {exit_code}).")
