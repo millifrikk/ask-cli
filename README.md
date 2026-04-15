@@ -1,13 +1,66 @@
 # ask-cli
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
+[![Version](https://img.shields.io/badge/version-2.2.4-informational)](https://github.com/millifrikk/ask-cli/releases)
+[![Providers](https://img.shields.io/badge/providers-Anthropic%20%7C%20GLM%20%7C%20Gemini%20%7C%20Ollama-orange)](#configuration)
+
 A terminal AI assistant that lives where you work. Multi-provider, streaming, context-aware — designed for the command line first.
 
+> If this saves you time, a ⭐ on GitHub goes a long way — it helps others find the project.
+
+---
+
+<!-- DEMO: replace this block with your asciinema GIF once recorded -->
+<!-- Recommended: record with `asciinema rec`, convert with `agg`, embed as: -->
+<!-- ![ask-cli demo](https://raw.githubusercontent.com/millifrikk/ask-cli/main/docs/demo.gif) -->
+> 📽 **Demo GIF coming soon** — `ask "how do I find files over 100MB in /var/log"` streaming live in your terminal.
+
+---
+
+## Contents
+
+- [Quick start](#quick-start)
+- [Why ask-cli exists](#why-ask-cli-exists)
+- [How it stays affordable](#how-it-stays-affordable)
+- [Features](#features)
+- [Installation — Linux / WSL](#installation--linux--wsl)
+- [Configuration](#configuration)
+- [Windows integration (via WSL)](#windows-integration-via-wsl)
+- [Usage](#usage)
+- [Contexts — Linux vs Windows prompts](#contexts--linux-vs-windows-prompts)
+- [Upgrading](#upgrading)
+- [Development](#development)
+- [Troubleshooting](#troubleshooting)
+- [License](#license)
+- [Credits](#credits)
+
+---
+
+## Quick start
+
 ```bash
+# Install (Ubuntu / WSL)
+sudo apt install -y python3-full python3-venv git xclip
+git clone https://github.com/millifrikk/ask-cli.git ~/projects/ask-cli
+python3 -m venv ~/.venvs/ask-cli
+~/.venvs/ask-cli/bin/pip install -e ~/projects/ask-cli
+sudo ln -sf ~/.venvs/ask-cli/bin/ask /usr/local/bin/ask
+
+# Set your API key (pick any provider)
+export ASK_ZAI_API_KEY="your-key"          # Z.ai — most cost-effective
+export ASK_ANTHROPIC_API_KEY="sk-ant-..."  # Anthropic Claude
+export ASK_GOOGLE_API_KEY="..."            # Google Gemini
+# No key needed for local Ollama
+
+# Ask away
 ask "how do I find files over 100MB in /var/log"
-ask --smart "why is quicksort O(n log n) average"
-ask --cmd "restart nginx"          # generates + copies the command
-ask -c "and how about for the last 7 days"   # continue the conversation
+ask --smart "explain the CAP theorem"
+ask --cmd "restart nginx"                  # generates + copies command to clipboard
+ask -c "and how about for the last 7 days" # continue the conversation
 ```
+
+---
 
 ## Why ask-cli exists
 
@@ -25,6 +78,24 @@ That framing shaped every design decision:
 - **Short flags for short needs** — `--quick` for terse answers, `--smart` to escalate to the better model, `-c` to continue the last conversation
 
 If you live in the shell and want an AI assistant that stays out of your way, this is for you. If you want an agent that drives a multi-file refactor, use one of the dedicated tools — they're better at that.
+
+---
+
+## How it stays affordable
+
+Most AI terminal tools require a full API subscription billed per token, which adds up fast for casual daily use.
+
+ask-cli takes a different approach: **it supports Z.ai's GLM models via an Anthropic-compatible API endpoint**, which means you can use your existing Z.ai Coding Plan subscription for terminal queries at near-zero marginal cost. The same `ANTHROPIC_AUTH_TOKEN` + `ANTHROPIC_BASE_URL` trick that powers Claude Code on Z.ai works here too.
+
+For users without a Z.ai plan, Google Gemini Flash-Lite is the next cheapest paid option (~$0.075 per 1M input tokens). And for fully offline, zero-cost usage, Ollama runs models locally with no API at all.
+
+| Provider | Best for | Cost |
+|---|---|---|
+| **Z.ai (GLM)** | Daily use on an existing Coding Plan | Near-free under plan quota |
+| **Ollama** | Offline / privacy-sensitive | Free (local compute) |
+| **Google Gemini Flash** | High-volume without a Z.ai plan | ~$0.075 / 1M tokens |
+| **Anthropic Claude** | Complex reasoning tasks | $3–$15 / 1M tokens |
+| **OpenAI GPT** | General fallback | $2.50–$15 / 1M tokens |
 
 ---
 
@@ -86,7 +157,7 @@ sudo ln -sf ~/.venvs/ask-cli/bin/ask /usr/local/bin/ask
 ### Verify
 
 ```bash
-ask --version      # should print: ask 2.2.0 (or newer)
+ask --version      # should print: ask 2.2.4 (or newer)
 ask "say hello"
 ```
 
@@ -355,7 +426,7 @@ pytest -q
 pytest --cov=src/ask_cli --cov-report=term-missing
 ```
 
-Coverage target: 75%+ on core modules. 154 tests as of v2.2.0.
+Coverage target: 75%+ on core modules. 157 tests as of v2.2.4.
 
 ### Lint & format
 
@@ -482,4 +553,8 @@ Group Policy prevents loading `$PROFILE`. Use the User-scope env var approach in
 
 ## Credits
 
-Built with [Anthropic Claude](https://www.anthropic.com/), [rich](https://github.com/Textualize/rich), and help from Claude Code.
+Built with [Anthropic Claude](https://www.anthropic.com/), [rich](https://github.com/Textualize/rich), and help from Claude Code. Provider flexibility made practical by [Z.ai](https://z.ai)'s Anthropic-compatible API.
+
+---
+
+*Found a bug or have an idea? [Open an issue](https://github.com/millifrikk/ask-cli/issues) — contributions welcome.*
