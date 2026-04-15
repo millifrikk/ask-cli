@@ -22,7 +22,7 @@ A terminal AI assistant that lives where you work. Multi-provider, streaming, co
 
 - [Quick start](#quick-start)
 - [Why ask-cli exists](#why-ask-cli-exists)
-- [How it stays affordable](#how-it-stays-affordable)
+- [Cost in practice](#cost-in-practice)
 - [Features](#features)
 - [Installation — Linux / WSL](#installation--linux--wsl)
 - [Configuration](#configuration)
@@ -81,21 +81,11 @@ If you live in the shell and want an AI assistant that stays out of your way, th
 
 ---
 
-## How it stays affordable
+## Cost in practice
 
-Most AI terminal tools require a full API subscription billed per token, which adds up fast for casual daily use.
+ask-cli interactions are typically one-shot questions or a short back-and-forth — not long agentic sessions that burn through tokens. A day of normal terminal use is rarely more than a handful of small exchanges, so paid-API costs stay negligible, and several providers' free tiers can comfortably cover that volume.
 
-ask-cli takes a different approach: **it supports Z.ai's GLM models via an Anthropic-compatible API endpoint**, which means you can use your existing Z.ai Coding Plan subscription for terminal queries at near-zero marginal cost. The same `ANTHROPIC_AUTH_TOKEN` + `ANTHROPIC_BASE_URL` trick that powers Claude Code on Z.ai works here too.
-
-For users without a Z.ai plan, Google Gemini Flash-Lite is the next cheapest paid option (~$0.075 per 1M input tokens). And for fully offline, zero-cost usage, Ollama runs models locally with no API at all.
-
-| Provider | Best for | Cost |
-|---|---|---|
-| **Z.ai (GLM)** | Daily use on an existing Coding Plan | Near-free under plan quota |
-| **Ollama** | Offline / privacy-sensitive | Free (local compute) |
-| **Google Gemini Flash** | High-volume without a Z.ai plan | ~$0.075 / 1M tokens |
-| **Anthropic Claude** | Complex reasoning tasks | $3–$15 / 1M tokens |
-| **OpenAI GPT** | General fallback | $2.50–$15 / 1M tokens |
+If you'd rather avoid paid APIs entirely, Ollama supports local models and a free cloud tier, both without a paid key. Switching between providers is a single config change (`ask --set-default-provider <name>`), so you can start on whichever free tier works for you and move only if your usage outgrows it.
 
 ---
 
