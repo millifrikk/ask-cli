@@ -224,26 +224,13 @@ Full decisions log: `.claude/memory/decisions.md`
 
 ### Process
 1. **Enter plan mode** — explore the codebase, understand the scope, design the approach
-2. **Write the plan** — Claude Code saves plans to `/home/emil/.claude/plans/` with a generated filename
+2. **Write the plan** — Claude Code saves plans to `~/.claude/plans/` with a generated filename
 3. **Get approval** — present the plan and wait for explicit user sign-off
-4. **Create a symlink** — once approved, immediately create a symlink in `docs/plans/` with a descriptive name:
-   ```bash
-   ln -s /home/emil/.claude/plans/<generated-name>.md \
-         /home/emil/projects/ask-cli/docs/plans/<descriptive-name>.md
-   ```
-5. **Then code** — only start implementation after the symlink is in place
+4. **(Optional, local only)** — symlink the plan into `docs/plans/<descriptive-name>.md` for easier navigation during the session. These symlinks are **gitignored** because they point outside the repo and don't resolve on other clones.
+5. **Then code** — only start implementation after the plan is approved
 
-### Symlink naming convention
-Use lowercase kebab-case, descriptive of the task or phase:
-- `phase1-foundation.md`
-- `phase2-power-features.md`
-- `fix-streaming-interrupt-handling.md`
-- `refactor-provider-base-class.md`
-- `add-google-gemini-provider.md`
-
-### Why
-Plans live in `/home/emily/.claude/plans/` with generated names that are not project-specific.
-The symlinks in `docs/plans/` make plans discoverable, reviewable, and tied to the project's git history.
+### Why plans aren't in git
+Plans are working notes tied to a specific conversation. They capture state that's often stale a week later (known gaps, provisional decisions, file paths that may have moved). They're valuable locally while the work is live; they're noise in the repo's permanent history. Decisions worth preserving go into `CLAUDE.md` (architecture), `CHANGELOG.md` (what shipped), or `docs/STATUS.md` (current state).
 
 ---
 
