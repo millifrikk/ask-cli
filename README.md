@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-2.2.4-informational)](https://github.com/millifrikk/ask-cli/releases)
+[![Version](https://img.shields.io/badge/version-2.3.2-informational)](https://github.com/millifrikk/ask-cli/releases)
 [![Providers](https://img.shields.io/badge/providers-Anthropic%20%7C%20GLM%20%7C%20Gemini%20%7C%20Ollama-orange)](#configuration)
 
 A terminal AI assistant that lives where you work. Multi-provider, streaming, context-aware — designed for the command line first.
