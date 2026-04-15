@@ -6,6 +6,20 @@ follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.3.4] — 2026-04-15
+
+### Fixed
+- `wsl ask "..."` from PowerShell now correctly uses the Windows prompt
+  again. v2.3.3's WSL-interactive override relied on `isatty()`, but
+  Windows Terminal + WSL2 + ConPTY proxies a TTY through to Linux, so
+  both interactive WSL and wsl.exe-spawned processes see TTYs and the
+  heuristic flipped both to Linux context. v2.3.4 adds a third signal:
+  the parent process's cmdline. `wsl.exe` invokes `bash -c "<cmd>"` (or
+  exec's from `/init`); an interactive WSL shell has a parent with no
+  `-c` flag. All three signals (WSL marker + TTY + non-`-c` parent) must
+  agree before overriding to Linux context. Interactive WSL still gets
+  Linux, `wsl ask` from PowerShell stays Windows.
+
 ## [2.3.3] — 2026-04-15
 
 ### Fixed
@@ -163,7 +177,8 @@ follows [SemVer](https://semver.org/).
   OpenAI, Google Gemini, Ollama), streaming, domain modes, conversation
   history, save/recall, agent mode, and XDG-compliant config.
 
-[Unreleased]: https://github.com/millifrikk/ask-cli/compare/v2.3.3...HEAD
+[Unreleased]: https://github.com/millifrikk/ask-cli/compare/v2.3.4...HEAD
+[2.3.4]: https://github.com/millifrikk/ask-cli/compare/v2.3.3...v2.3.4
 [2.3.3]: https://github.com/millifrikk/ask-cli/compare/v2.3.2...v2.3.3
 [2.3.2]: https://github.com/millifrikk/ask-cli/compare/v2.3.1...v2.3.2
 [2.3.1]: https://github.com/millifrikk/ask-cli/compare/v2.3.0...v2.3.1

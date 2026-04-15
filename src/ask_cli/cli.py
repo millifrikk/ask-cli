@@ -70,18 +70,40 @@ PROVIDER_CLASSES: dict[str, type[BaseProvider]] = {
 }
 
 
+def _parent_cmdline() -> list[str]:
+    """Read `/proc/PPid/cmdline` (NUL-separated) and return argv as a list. Empty on failure."""
+    try:
+        with open(f"/proc/{os.getppid()}/cmdline", "rb") as f:
+            raw = f.read().decode("utf-8", errors="replace")
+        return [arg for arg in raw.split("\0") if arg]
+    except OSError:
+        return []
+
+
 def _invocation_is_interactive_wsl() -> bool:
     """True if we're in an interactive WSL shell — user typed this, not proxied by wsl.exe.
 
-    Heuristic: we're in WSL (`WSL_DISTRO_NAME` or `WSL_INTEROP` set) AND at least
-    one of stdin/stdout is a TTY. When `wsl.exe <cmd>` is spawned from Windows
-    PowerShell, neither stdin nor stdout is a TTY — they're pipes to the Windows
-    parent process.
+    Three signals must all agree:
+      1. We're in WSL (`WSL_DISTRO_NAME` or `WSL_INTEROP` set).
+      2. At least one of stdin/stdout is a TTY. Under Windows Terminal + ConPTY
+         this isn't enough on its own because wsl.exe proxies a TTY through.
+      3. The parent process is an interactive shell — specifically, its argv
+         does NOT contain `-c` and it isn't `/init`. `wsl.exe <cmd>` spawns
+         `bash -c "<cmd>"` to parse the command line, which has `-c`. A shell
+         a user typed `ask "..."` into has no `-c` (it's reading from a TTY).
     """
     try:
         in_wsl = bool(os.environ.get("WSL_DISTRO_NAME") or os.environ.get("WSL_INTEROP"))
-        has_tty = sys.stdin.isatty() or sys.stdout.isatty()
-        return in_wsl and has_tty
+        if not in_wsl:
+            return False
+        if not (sys.stdin.isatty() or sys.stdout.isatty()):
+            return False
+        argv = _parent_cmdline()
+        if not argv:
+            return False
+        if "-c" in argv:
+            return False
+        return not (argv[0].endswith("/init") or argv[0] == "init")
     except (AttributeError, OSError):
         return False
 

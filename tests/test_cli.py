@@ -595,7 +595,7 @@ def test_non_interactive_wsl_keeps_windows_context():
 
 
 class TestInvocationIsInteractiveWsl:
-    """The heuristic itself."""
+    """The heuristic itself — three signals: WSL marker + TTY + interactive parent shell."""
 
     def test_requires_wsl_marker(self):
         from ask_cli.cli import _invocation_is_interactive_wsl
@@ -604,6 +604,7 @@ class TestInvocationIsInteractiveWsl:
             patch.dict("os.environ", {}, clear=True),
             patch("sys.stdin.isatty", return_value=True),
             patch("sys.stdout.isatty", return_value=True),
+            patch("ask_cli.cli._parent_cmdline", return_value=["-bash"]),
         ):
             assert _invocation_is_interactive_wsl() is False
 
@@ -614,27 +615,60 @@ class TestInvocationIsInteractiveWsl:
             patch.dict("os.environ", {"WSL_DISTRO_NAME": "Ubuntu"}, clear=True),
             patch("sys.stdin.isatty", return_value=False),
             patch("sys.stdout.isatty", return_value=False),
+            patch("ask_cli.cli._parent_cmdline", return_value=["-bash"]),
         ):
             assert _invocation_is_interactive_wsl() is False
 
-    def test_wsl_plus_stdin_tty_is_interactive(self):
+    def test_parent_with_dash_c_is_not_interactive(self):
+        """wsl.exe from PowerShell spawns `bash -c 'ask ...'` — parent has -c."""
         from ask_cli.cli import _invocation_is_interactive_wsl
 
         with (
             patch.dict("os.environ", {"WSL_DISTRO_NAME": "Ubuntu"}, clear=True),
             patch("sys.stdin.isatty", return_value=True),
-            patch("sys.stdout.isatty", return_value=False),
+            patch("sys.stdout.isatty", return_value=True),
+            patch(
+                "ask_cli.cli._parent_cmdline",
+                return_value=["/bin/bash", "-c", "ask 'hello'"],
+            ),
         ):
-            assert _invocation_is_interactive_wsl() is True
+            assert _invocation_is_interactive_wsl() is False
 
-    def test_wsl_plus_stdout_tty_is_interactive(self):
-        """Redirected stdin but terminal stdout — user did `echo foo | ask` in WSL."""
+    def test_parent_is_init_is_not_interactive(self):
+        """Some wsl.exe configs exec directly from /init without a shell layer."""
         from ask_cli.cli import _invocation_is_interactive_wsl
 
         with (
             patch.dict("os.environ", {"WSL_DISTRO_NAME": "Ubuntu"}, clear=True),
-            patch("sys.stdin.isatty", return_value=False),
+            patch("sys.stdin.isatty", return_value=True),
             patch("sys.stdout.isatty", return_value=True),
+            patch(
+                "ask_cli.cli._parent_cmdline",
+                return_value=["/init", "ask", "hello"],
+            ),
+        ):
+            assert _invocation_is_interactive_wsl() is False
+
+    def test_interactive_bash_parent_is_interactive(self):
+        """User typing in a WSL terminal — parent is login bash `-bash` or `/bin/bash`, no -c."""
+        from ask_cli.cli import _invocation_is_interactive_wsl
+
+        with (
+            patch.dict("os.environ", {"WSL_DISTRO_NAME": "Ubuntu"}, clear=True),
+            patch("sys.stdin.isatty", return_value=True),
+            patch("sys.stdout.isatty", return_value=True),
+            patch("ask_cli.cli._parent_cmdline", return_value=["-bash"]),
+        ):
+            assert _invocation_is_interactive_wsl() is True
+
+    def test_non_login_interactive_bash_is_interactive(self):
+        from ask_cli.cli import _invocation_is_interactive_wsl
+
+        with (
+            patch.dict("os.environ", {"WSL_DISTRO_NAME": "Ubuntu"}, clear=True),
+            patch("sys.stdin.isatty", return_value=True),
+            patch("sys.stdout.isatty", return_value=True),
+            patch("ask_cli.cli._parent_cmdline", return_value=["/bin/bash"]),
         ):
             assert _invocation_is_interactive_wsl() is True
 
@@ -645,8 +679,21 @@ class TestInvocationIsInteractiveWsl:
             patch.dict("os.environ", {"WSL_INTEROP": "/run/WSL/42"}, clear=True),
             patch("sys.stdin.isatty", return_value=True),
             patch("sys.stdout.isatty", return_value=True),
+            patch("ask_cli.cli._parent_cmdline", return_value=["-bash"]),
         ):
             assert _invocation_is_interactive_wsl() is True
+
+    def test_empty_parent_cmdline_bails_out(self):
+        """If we can't read /proc (shouldn't happen on Linux), be conservative: not interactive."""
+        from ask_cli.cli import _invocation_is_interactive_wsl
+
+        with (
+            patch.dict("os.environ", {"WSL_DISTRO_NAME": "Ubuntu"}, clear=True),
+            patch("sys.stdin.isatty", return_value=True),
+            patch("sys.stdout.isatty", return_value=True),
+            patch("ask_cli.cli._parent_cmdline", return_value=[]),
+        ):
+            assert _invocation_is_interactive_wsl() is False
 
 
 def test_set_default_provider_chmods_config(tmp_path):
