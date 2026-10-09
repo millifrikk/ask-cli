@@ -1,8 +1,10 @@
 """Shared fixtures for ask-cli tests."""
 
 import json
+import os
 from pathlib import Path
 
+import pyperclip
 import pytest
 
 from ask_cli.config import (
@@ -13,6 +15,30 @@ from ask_cli.config import (
     OutputConfig,
     ProviderConfig,
 )
+
+_ISOLATED_ENV_PREFIXES = ("ASK_", "WSL_", "XDG_")
+
+
+@pytest.fixture(autouse=True)
+def isolated_environment(tmp_path, monkeypatch) -> None:
+    # Tests must never read real API keys, touch the real ~/.config/ask or
+    # ~/.local/share/ask, or inherit WSL context from the host shell.
+    for name in list(os.environ):
+        if name.startswith(_ISOLATED_ENV_PREFIXES):
+            monkeypatch.delenv(name)
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(home / ".config"))
+    monkeypatch.setenv("XDG_DATA_HOME", str(home / ".local" / "share"))
+
+
+@pytest.fixture(autouse=True)
+def fake_clipboard(monkeypatch) -> list[str]:
+    copied: list[str] = []
+    monkeypatch.setattr(pyperclip, "copy", copied.append)
+    monkeypatch.setattr(pyperclip, "paste", lambda: copied[-1] if copied else "")
+    return copied
 
 
 @pytest.fixture
