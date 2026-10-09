@@ -65,7 +65,7 @@ class TestOllamaProvider:
             list(provider.stream([{"role": "user", "content": "hi"}], "llama3", 100))
 
             call_kwargs = mock_client.chat.completions.create.call_args[1]
-            assert call_kwargs["extra_body"] is None
+            assert "extra_body" not in call_kwargs
 
     @pytest.fixture
     def make_provider(self, http_client):
@@ -113,3 +113,15 @@ class TestOllamaProvider:
         provider = make_provider(lambda request: sse_response(body))
         list(provider.stream(MESSAGES, "llama", 100))
         assert provider.last_stop_reason == "max_tokens"
+
+    def test_ollama_keeps_max_tokens(self, make_provider):
+        import json
+
+        seen: dict = {}
+
+        def handler(request):
+            seen.update(json.loads(request.content))
+            return sse_response(openai_sse("ok"))
+
+        list(make_provider(handler).stream(MESSAGES, "llama", 77))
+        assert seen["max_tokens"] == 77

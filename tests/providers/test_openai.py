@@ -89,7 +89,7 @@ class TestOpenAIProvider:
             assert messages[0]["content"] == "Be terse."
             assert messages[1]["role"] == "user"
 
-    def test_legacy_model_uses_max_tokens(self, openai_provider):
+    def test_every_model_uses_max_completion_tokens(self, openai_provider):
         with patch.object(openai_provider, "_get_client") as mock_get_client:
             mock_client = MagicMock()
             mock_get_client.return_value = mock_client
@@ -98,8 +98,9 @@ class TestOpenAIProvider:
             list(openai_provider.stream([{"role": "user", "content": "hi"}], "gpt-4o", 123))
 
             call_kwargs = mock_client.chat.completions.create.call_args[1]
-            assert call_kwargs["max_tokens"] == 123
-            assert "max_completion_tokens" not in call_kwargs
+            # max_tokens is deprecated by OpenAI and rejected by o-series models
+            assert call_kwargs["max_completion_tokens"] == 123
+            assert "max_tokens" not in call_kwargs
 
     def test_gpt5_model_uses_max_completion_tokens(self, openai_provider):
         with patch.object(openai_provider, "_get_client") as mock_get_client:

@@ -107,3 +107,17 @@ def test_records_why_the_stream_stopped(make_provider, stop_reason, expected):
     provider = make_provider(lambda request: sse_response(body))
     list(provider.stream(MESSAGES, "m", 100))
     assert provider.last_stop_reason == expected
+
+
+def test_custom_base_url_is_used():
+    provider = AnthropicProvider(
+        ProviderConfig(api_key="k", base_url="https://proxy.example/anthropic")
+    )
+    assert str(provider._get_client().base_url).startswith("https://proxy.example/anthropic")
+
+
+def test_zai_is_the_anthropic_provider_with_its_own_identity():
+    from ask_cli.providers.zai import ZaiProvider
+
+    assert issubclass(ZaiProvider, AnthropicProvider)
+    assert (ZaiProvider.provider_id, ZaiProvider.display_name) == ("zai", "Z.ai")

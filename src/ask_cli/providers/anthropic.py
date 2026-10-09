@@ -1,4 +1,4 @@
-"""Anthropic provider — native Anthropic API."""
+"""Anthropic provider — native Anthropic Messages API (also the base for Z.ai)."""
 
 from collections.abc import Generator
 
@@ -10,7 +10,7 @@ from ask_cli.providers.errors import anthropic_errors
 
 
 class AnthropicProvider(BaseProvider):
-    """Provider for the native Anthropic API."""
+    """Provider for the Anthropic Messages API, optionally at a custom base_url."""
 
     provider_id = "anthropic"
     display_name = "Anthropic"
@@ -21,7 +21,10 @@ class AnthropicProvider(BaseProvider):
 
     def _get_client(self) -> anthropic.Anthropic:
         if self._client is None:
-            self._client = anthropic.Anthropic(api_key=self.config.api_key)
+            kwargs: dict[str, str] = {"api_key": self.config.api_key}
+            if self.config.base_url:
+                kwargs["base_url"] = self.config.base_url
+            self._client = anthropic.Anthropic(**kwargs)
         return self._client
 
     def is_configured(self) -> bool:
@@ -39,11 +42,7 @@ class AnthropicProvider(BaseProvider):
         self.validate()
         client = self._get_client()
 
-        kwargs: dict = {
-            "model": model,
-            "max_tokens": max_tokens,
-            "messages": messages,
-        }
+        kwargs: dict = {"model": model, "max_tokens": max_tokens, "messages": messages}
         if system_prompt:
             kwargs["system"] = system_prompt
 
