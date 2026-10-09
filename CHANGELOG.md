@@ -6,6 +6,56 @@ follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.4.0] — 2026-10-09
+
+### Added
+- `--template NAME` uses your own template from
+  `~/.local/share/ask/templates/NAME.yaml` (a `prompt:` field). User templates
+  were documented before but unreachable.
+- A domain flag and a task template now combine: `ask --docker --fix "…"`
+  uses both prompts (previously only one was silently applied).
+
+### Changed
+- **Contradictory flags are rejected (exit 2) instead of silently resolved:**
+  `-m`/`--fast`/`--smart`; `--markdown`/`--raw`/`--code-only`/`--json`;
+  `--explain`/`--fix`/`--optimize`; more than one domain flag; more than one
+  management action (`--stats`, `--clear`, `--recall`, …) or one with a
+  question; `--auto-approve`/`--agent-max-steps` without `--agent`;
+  `--agent` with `--save`/`-c`/`--copy`/`--copy-code`/`--cmd`/`--execute`;
+  `--execute` with `--dry-run`. `-p`/`--set-default-provider` only accept
+  known providers; `--max-file-size` and `--agent-max-steps` must be ≥ 1.
+  **Scripts that relied on a silently ignored flag will now fail fast.**
+- `--execute` implies `--cmd`. On its own it previously did nothing; it now
+  runs non-destructive generated commands automatically, as its help text
+  always said. Destructive ones still require typing `yes`.
+- Agent mode: the plan always needs your approval (`--auto-approve` now only
+  skips per-step confirmation of non-destructive commands, matching the PRD).
+- Commands run under `/bin/bash` (falling back to `sh`) since the model is
+  told to write bash; `/bin/sh` is dash on Debian/Ubuntu.
+
+### Fixed
+- `--agent --dry-run` executed every step; it now shows the plan and stops.
+- The agent ignored the system prompt, templates, domain flags, `--quick` and
+  the Windows context; they now apply to both the planning and execution
+  steps.
+- Agent steps can no longer hang on interactive commands (`git commit`,
+  `npm init`, `tail -f`): stdin is `/dev/null` and each step times out after
+  120 s. Non-UTF-8 output no longer crashes the agent, and long output is
+  truncated before being sent back to the model.
+- `--cmd` auto-copy respects `features.clipboard` and no longer copies twice
+  with `--copy`.
+
+### Security
+- The destructive-command list (which gates `--execute` and
+  `--auto-approve`) is matched after stripping quotes and backslashes, so
+  `r\m` / `'rm'` no longer bypass it, and it now also covers `mv`, `shred`,
+  `rsync --delete`, `tee`, file redirects (except `/dev/null`, `/tmp` scratch
+  files and `2>&1`), `git checkout/restore/branch -D/stash drop/push`,
+  `crontab -r`, `systemctl stop`, code piped or passed inline to interpreters
+  (`| python3`, `python -c`, `bash -lc`, `node -e`), `eval`, `curl`/`wget`
+  uploads, `docker rm`/`prune` and `kubectl delete`. It remains a best-effort
+  list, not a sandbox. `ls 2>/dev/null` is no longer a false positive.
+
 ## [2.3.7] — 2026-10-09
 
 ### Fixed
@@ -271,7 +321,8 @@ follows [SemVer](https://semver.org/).
   OpenAI, Google Gemini, Ollama), streaming, domain modes, conversation
   history, save/recall, agent mode, and XDG-compliant config.
 
-[Unreleased]: https://github.com/millifrikk/ask-cli/compare/v2.3.7...HEAD
+[Unreleased]: https://github.com/millifrikk/ask-cli/compare/v2.4.0...HEAD
+[2.4.0]: https://github.com/millifrikk/ask-cli/compare/v2.3.7...v2.4.0
 [2.3.7]: https://github.com/millifrikk/ask-cli/compare/v2.3.6...v2.3.7
 [2.3.6]: https://github.com/millifrikk/ask-cli/compare/v2.3.5...v2.3.6
 [2.3.5]: https://github.com/millifrikk/ask-cli/compare/v2.3.4...v2.3.5

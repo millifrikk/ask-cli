@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-2.3.7-informational)](https://github.com/millifrikk/ask-cli/releases)
+[![Version](https://img.shields.io/badge/version-2.4.0-informational)](https://github.com/millifrikk/ask-cli/releases)
 [![Providers](https://img.shields.io/badge/providers-Anthropic%20%7C%20GLM%20%7C%20Gemini%20%7C%20Ollama-orange)](#configuration)
 
 A terminal AI assistant that lives where you work. Multi-provider, streaming, context-aware — designed for the command line first.
@@ -98,14 +98,14 @@ If you'd rather avoid paid APIs entirely, Ollama supports local models and a fre
 | **Model tiers** | `--fast` / default / `--smart` per provider; `--quick` for terse one-liners |
 | **Context-aware prompts** | Different system prompt when invoked from Windows via WSL vs. a Linux terminal |
 | **Reasoning model support** | `--quick` auto-disables thinking tokens on Qwen3.5 / DeepSeek-R1 so the budget isn't eaten by hidden chain-of-thought |
-| **Shell command generation** | `--cmd` generates a single command and auto-copies to clipboard; `--execute` runs it with safety checks against destructive patterns |
+| **Shell command generation** | `--cmd` generates a single command and auto-copies to clipboard; `--execute` runs safe commands automatically and asks you to type `yes` for destructive ones |
 | **Conversation history** | `-c` continues the previous session; 1-hour TTL; `--clear` resets |
 | **File attachments** | `-f path` or `-F glob` to attach files/globs as context |
-| **Domain modes** | `--docker`, `--git`, `--sql`, `--k8s`, `--aws`, `--security`, `--perf`, `--sap` |
-| **Output modes** | `--markdown`, `--raw`, `--code-only`, `--json`, `--no-color` |
+| **Domain modes & templates** | `--docker`, `--git`, `--sql`, `--k8s`, `--aws`, `--security`, `--perf`, `--sap`; combine with `--explain` / `--fix` / `--optimize` or your own `--template NAME` |
+| **Output modes** | `--markdown` (default), `--raw`, `--code-only`, `--json`, `--no-color`; piped output is written verbatim, errors go to stderr |
 | **Click-friendly rendering** | Code blocks render without padded background, so triple-click selects exactly the code |
 | **Clipboard integration** | `--copy` full response, `--copy-code` first code block |
-| **Agent mode** | `--agent` runs a multi-step plan-and-execute loop (with approval gates) |
+| **Agent mode** | `--agent` runs a multi-step plan-and-execute loop (you approve the plan; `--dry-run` shows it without running anything) |
 | **Save/recall** | `--save NAME` / `--recall NAME` to persist answers by name |
 | **Usage stats** | `--stats` to see cumulative query counts and approximate token usage |
 
@@ -320,7 +320,7 @@ echo "error log content..." | ask "what's going wrong"
 ```bash
 ask --cmd "restart nginx"                  # generates + auto-copies to clipboard
 ask --cmd --dry-run "backup /etc to tarball"   # show command, don't run
-ask --cmd --execute "list processes using port 80"   # run after confirmation
+ask --execute "list processes using port 80"   # run it (destructive commands ask for 'yes')
 ```
 
 ### Domain modes
@@ -338,6 +338,18 @@ ask --sql   "window function for running total"
 ask --explain "tar -xzvf archive.tar.gz"
 ask --fix "why doesn't this regex work: ^[a-z]+.txt$"
 ask --optimize "SELECT * FROM orders WHERE status='x' ORDER BY created DESC"
+ask --docker --fix "container exits with code 137"   # a domain and a task combine
+```
+
+Your own templates live in `~/.local/share/ask/templates/NAME.yaml` (or under
+`$XDG_DATA_HOME`) and need a `prompt:` field:
+
+```yaml
+prompt: You are a meticulous code reviewer. Point out bugs before style.
+```
+
+```bash
+ask --template reviewer -f app.py "review this"
 ```
 
 ### Output modes
@@ -345,9 +357,13 @@ ask --optimize "SELECT * FROM orders WHERE status='x' ORDER BY created DESC"
 ```bash
 ask --code-only "write a python palindrome checker"   # only code blocks
 ask --raw "summarize this paragraph"                  # no markdown rendering
-ask --json "return user info as JSON for user_id=42"  # raw, for piping
+ask --json "user info for user_id=42 as JSON" | jq .  # asks the model for JSON only
 ask --no-color "..."                                  # strip ANSI for logs
+ask "write a bash backup script" > backup.sh          # piped/redirected output is verbatim
 ```
+
+Output modes are mutually exclusive, as are `--fast`/`--smart`/`-m` and the
+domain flags: contradictory combinations are rejected rather than guessed.
 
 ### Save and recall
 
@@ -362,7 +378,8 @@ ask --delete-saved nginx-cmd
 
 ```bash
 ask --agent "find and archive log files older than 30 days in /var/log"
-ask --agent --auto-approve "..."           # skip confirmation on safe steps
+ask --agent --dry-run "..."                # show the plan, run nothing
+ask --agent --auto-approve "..."           # skip per-step confirmation on safe steps (plan still needs approval)
 ask --agent --agent-max-steps 20 "..."     # let it take more steps
 ```
 

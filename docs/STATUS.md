@@ -2,21 +2,21 @@
 
 Living document. Update when we make meaningful changes so the next session can pick up without excavating chat history.
 
-**Last updated:** 2026-10-09 · **Version:** v2.3.7
+**Last updated:** 2026-10-09 · **Version:** v2.4.0
 
 ---
 
 ## Current version
 
-**v2.3.7** — Crash paths and robustness: single error boundary (no tracebacks), network-error mapping, atomic state files, config validation, safer stdin/attachments/prompts. Third release of the Oct 2026 hardening pass (phases 0–5, v2.3.5 → v2.4.2), which follows a full code review and flag audit.
+**v2.4.0** — Flag semantics and agent safety: conflicting flags rejected, `--template`, composable templates, `--execute` implies `--cmd`, agent honours dry-run/prompts/plan approval, broader destructive-command list. Fourth release of the Oct 2026 hardening pass (phases 0–5, v2.3.5 → v2.4.2), which follows a full code review and flag audit.
 
 ```bash
-ask --version  # ask 2.3.7
+ask --version  # ask 2.4.0
 ```
 
 Release history:
 `v2.0.0` → `v2.1.0` → `v2.2.0` → `v2.2.1` → `v2.2.2` → `v2.2.3` → `v2.2.4` →
-`v2.3.0` → `v2.3.1` → `v2.3.2` → `v2.3.3` → `v2.3.4` → `v2.3.5` → `v2.3.6` → `v2.3.7`. All tags pushed; GitHub releases created for each.
+`v2.3.0` → `v2.3.1` → `v2.3.2` → `v2.3.3` → `v2.3.4` → `v2.3.5` → `v2.3.6` → `v2.3.7` → `v2.4.0`. All tags pushed; GitHub releases created for each.
 
 ---
 
