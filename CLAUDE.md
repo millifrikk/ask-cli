@@ -1,169 +1,140 @@
 # Ask CLI - Project Guidelines
 
-This file is read by Claude Code at the start of every session.
-All coding standards and decisions documented here must be followed without exception.
-When in doubt, ask before deviating.
+This file is read by Claude Code at the start of every session. The architecture
+rules below are firm; the rest describes how this project is worked on. If a rule
+gets in the way of doing the right thing, say so rather than quietly working around it.
 
 ---
 
 ## Project Overview
 
 `ask-cli` is a terminal AI assistant built as a proper Python package.
-- PRD: `docs/ask-cli-prd-merged.md` — the authoritative source for features and design decisions
-- Design decisions log: see memory files (linked from PRD discussions)
-- Installs as `ask` command via `pip install -e .`, replacing `~/bin/ask`
+- PRD: `docs/ask-cli-prd-merged.md` — features and design intent
+- Current state, deployed machines and open work: `docs/STATUS.md`
+- What shipped when: `CHANGELOG.md`
+- Installs as the `ask` command via `pip install -e .` (editable install in `~/.venvs/ask-cli`)
 
 ---
 
-## Architecture Rules (non-negotiable)
+## Architecture Rules
 
 ### Separation of concerns
-- `cli.py` — argument parsing only. No business logic. Never imported by other modules.
-- `providers/` — one file per provider. All conform to `BaseProvider` abstract class.
-- `core/` — business logic. Never calls `sys.exit()`, `print()`, or reads config.
-- `config.py` — config read once at startup, passed as an object. No global state.
-- `output.py` — single `rich.Console` instance. All user-facing output goes through here.
+- `cli.py` — argument parsing, flag validation and dispatch only. Never imported by other modules.
+- `output.py` — the only module that writes to the terminal or reads from it.
+  - Answers go to stdout (`output.console`); errors, warnings, notices and prompts go to
+    stderr (`output.err_console`), so `ask … | jq` and `ask … > file` get only the answer.
+  - When stdout is not a terminal, responses are written verbatim (no Rich wrapping,
+    padding or Markdown rendering).
+  - Reference consoles as `output.console` at call time — `--no-color` rebinds them.
+- `core/` — business logic. Never prints, prompts, calls `sys.exit()` or reads the config
+  file. Where it needs the user (agent loop, `--cmd` confirmation) it takes a small UI
+  protocol (`AgentUI`, `CommandUI`) that `output.ConsoleUI` implements.
+- `config.py` — config read once at startup and passed down as `AppConfig`; XDG paths are
+  resolved once into `AppPaths`. Problems that shouldn't stop a run are returned in
+  `AppConfig.warnings`, not printed. No global state.
+- `providers/` — one module per backend, all `BaseProvider` subclasses registered in
+  `providers/__init__.py`. Z.ai and Ollama subclass the Anthropic and OpenAI providers.
 
 ### Provider pattern
-Every provider must implement `BaseProvider`. New providers are drop-in additions.
-Never add provider-specific logic outside `providers/`.
+Every provider implements `BaseProvider`, declares `provider_id` / `display_name`, and
+records `last_stop_reason`. New providers are drop-in additions. Provider-specific logic
+stays in `providers/`; SDK errors are translated in `providers/errors.py`.
 
 ### Error handling
-- Never swallow exceptions silently.
-- Never use bare `except:` — always catch specific exception types.
-- Business logic raises typed exceptions (`AskCLIError`, `ProviderError`, `ConfigError`).
-- CLI layer catches typed exceptions and renders them via `rich` with actionable messages.
-- API errors are caught at the provider layer and re-raised as `ProviderError`.
+- Business logic raises typed exceptions from `exceptions.py`, each with an optional
+  `hint` set where the right advice is known (PRD §10: problem + cause + suggestion).
+- `cli.main()` is the single error boundary: `AskCLIError` → message + hint, exit 1;
+  Ctrl+C → exit 130; usage errors → exit 2. Nothing else catches-and-exits.
+- Never swallow exceptions silently; never use bare `except:` or `except Exception`.
+- API and transport errors (including connections dropped mid-stream) are re-raised as
+  `ProviderError` at the provider layer.
+- Local state files go through `core/storage.py` (atomic, owner-only writes).
 
 ---
 
 ## Code Style
 
 ### Tooling
-- **Formatter:** `ruff format` — run before every commit
-- **Linter:** `ruff check` — zero warnings policy
-- **No other linters** — ruff replaces flake8, isort, pyupgrade
+- `ruff format` and `ruff check` — zero warnings. The lint selection enforces several
+  rules in this file: no `print()` (T20), no blind except (BLE), annotated signatures
+  (ANN), bandit security checks (S). Tests are exempt from ANN/ARG/S.
+- CI (`.github/workflows/ci.yml`) runs ruff and pytest on Python 3.11–3.13.
 
 ### Python
 - **Minimum version:** Python 3.11+
-- **Strings:** f-strings always. No `.format()`, no `%` formatting.
-- **Line length:** 100 characters
-- **Imports:** stdlib → third-party → local, blank line between groups (ruff enforces this)
+- **Strings:** f-strings. No `.format()` or `%`.
+- **Line length:** 100
+- **Types:** annotate every function signature and class attribute in `src/`; skip obvious
+  locals. Use `X | Y`, not `Optional`/`Union`.
 
-### Type hints
-- **Pragmatic** — annotate all function signatures and class attributes
-- Skip obvious locals (`x = []`, `count = 0`, etc.)
-- No `mypy --strict` — but signatures must be annotated
-- Use `X | Y` union syntax (Python 3.10+), not `Optional[X]` or `Union[X, Y]`
-
-### Docstrings
-- **None** — code must be self-documenting through good naming
-- Add inline comments only where logic is non-obvious
-- Exception: module-level docstrings (one line) are required
+### Docstrings and comments
+- One-line module docstring required.
+- Short docstrings are welcome where they say something the name doesn't (contract,
+  side effects, why). Don't restate the function name.
+- Inline comments only for non-obvious reasoning.
 
 ### Naming
-- `snake_case` for files, functions, variables
-- `PascalCase` for classes
-- `UPPER_SNAKE_CASE` for constants
-- No abbreviations: `conversation_history` not `conv_hist`, `provider_config` not `prov_cfg`
-- One primary class per module where practical
-
----
-
-## Output & UX
-
-- **All output** goes through `rich.Console` — never raw `print()`
-- **Streaming** is always on — use `rich.live` with Anthropic streaming API
-- **Colors/formatting** disabled automatically when stdout is not a TTY (piped output)
-- **`--no-color`** flag disables rich formatting
-- Error messages follow the pattern in PRD §10: problem + cause + actionable suggestion
+- `snake_case` files/functions/variables, `PascalCase` classes, `UPPER_SNAKE_CASE` constants.
+- No abbreviations: `conversation_history`, not `conv_hist`.
 
 ---
 
 ## Testing
 
-### Framework: pytest
+### Working loop (TDD)
+For every fix or feature:
+1. **Red:** write a test that reproduces the bug or specifies the behaviour; watch it fail
+   for the right reason.
+2. **Green:** smallest change that passes.
+3. **Refactor**, then run the full gate: `pytest -q`, `ruff check src/ tests/`,
+   `ruff format --check src/ tests/`.
+4. One conventional commit per logical change.
 
-### What to test
-- **Core modules** (providers, config, conversation): meaningful coverage required
-- **CLI glue code** (`cli.py`, output formatting): lighter coverage acceptable — these fail loudly
-- All **API calls must be mocked** — tests never make real HTTP requests
-- Test **error paths**, not just happy paths
+### Isolation (non-negotiable)
+Tests must never touch the real user environment. Autouse fixtures in `tests/conftest.py`
+strip `ASK_*`/`WSL_*`/`XDG_*` env vars, point `HOME` and XDG dirs at `tmp_path`, stub the
+clipboard and reset output state. Keep it that way:
+- Never read real API keys, `~/.config/ask` or `~/.local/share/ask` from a test.
+- All network calls are mocked. Provider tests use real SDK clients over
+  `httpx.MockTransport` (helpers in `tests/providers/conftest.py`).
+- CLI tests use the `run_cli` fixture, which calls `main(argv)` with the model, agent,
+  history and shell stubbed and fails on unexpected confirmation prompts.
 
 ### Standards
-- Test file mirrors source: `src/ask_cli/providers/zai.py` → `tests/providers/test_zai.py`
-- Shared fixtures in `conftest.py`, never duplicated
-- Coverage target: 80% on core modules (soft target, reviewed per phase — no hard CI gate)
-- Test names describe behaviour: `test_provider_raises_on_missing_api_key`, not `test_provider_1`
+- Test files mirror source: `src/ask_cli/core/agent.py` → `tests/core/test_agent.py`.
+- Test error paths, not just happy paths. Names describe behaviour.
+- Assert real behaviour — never just `is not None`.
+- Coverage target: 80% on core modules and providers (soft target).
+
+### Manual verification
+Unit tests can't see terminal rendering. After user-visible changes, smoke-test the real
+binary with `XDG_DATA_HOME` pointed at a scratch dir: piped output (`| cat -A`, `| jq`),
+`--no-color` in a pty (`script -qec`), and the error paths you touched. Keep live API calls
+few and cheap (the fast tier).
 
 ---
 
-## Git & Commits
+## Git, Releases & Versioning
 
-### Conventional commits — required format:
-```
-feat: add --quick flag for terse responses
-fix: handle missing config file gracefully
-refactor: extract provider base class
-test: add coverage for conversation history expiry
-docs: update command reference in PRD
-chore: add ruff to pyproject.toml
-```
+### Commits
+Conventional commits (`feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`), one
+logical change each. Never commit secrets, `.env`, `__pycache__/`, or `config.json`
+(it may hold API keys). Review `git diff` before committing.
 
-### Rules
-- One logical change per commit
-- Never commit: secrets, API keys, `.env` files, `__pycache__/`, `*.pyc`
-- Config file (`~/.config/ask/config.json`) never committed — contains API keys
-- Review `git diff` before committing — no accidental debug prints or temp code
+### Branches and releases
+- Non-trivial work goes on a branch (`fix/…`, `feat/…`, `refactor/…`) and is
+  fast-forward merged to `main` when its release is ready.
+- Run the `/release-check` skill (wraps `docs/RELEASE-CHECKLIST.md`) before each release.
+- This is a personal project: the owner has authorised releasing autonomously —
+  bump, tag, push and `gh release create` without stopping for review. Still stop for
+  anything destructive (force-push, deleting tags/branches, rewriting history).
 
----
-
-## Versioning & Releases
-
-### Single source of truth
-The package version lives in **one place**: `src/ask_cli/__init__.py`.
-```python
-__version__ = "2.1.0"
-```
-`pyproject.toml` reads it dynamically via hatch — never hardcode the version there.
-
-### SemVer rules
-- **Patch** (`2.1.0 → 2.1.1`) — bug fixes, no user-visible behavior change
-- **Minor** (`2.1.0 → 2.2.0`) — new features, backward compatible
-- **Major** (`2.1.0 → 3.0.0`) — breaking changes (removed flags, incompatible config)
-
-### Release workflow (every release)
-
-Follow the full [Release Checklist](docs/RELEASE-CHECKLIST.md) — scoped
-by release type (patch / feature / major). Short version:
-
-```bash
-# 1. Pre-flight: tests + lint green, working tree clean
-pytest -q && ruff check src/ tests/
-
-# 2. Bump version
-vim src/ask_cli/__init__.py        # edit __version__
-
-# 3. Update CHANGELOG.md and the README version badge
-
-# 4. Commit + tag
-git add -A
-git commit -m "chore: bump version to v2.1.1"
-git tag v2.1.1
-git push origin main --tags
-
-# 5. GitHub release page
-gh release create v2.1.1 --generate-notes
-```
-
-### CLI exposure
-`ask --version` reads `__version__` directly — always matches the package. No drift between `--version` output and installed metadata.
-
-### Rules
-- Never bump version without tagging — untagged bumps leave no release record
-- Never tag without bumping — tags must map 1:1 with `__version__` values
-- Never reuse a tag — once `v2.1.0` is pushed, the next release is `v2.1.1` or higher
-- The `main` branch always reflects a released or in-progress version — feature branches for anything non-trivial
+### Versioning
+- `__version__` in `src/ask_cli/__init__.py` is the single source of truth (hatch reads it).
+- SemVer: patch = fixes; minor = new features or behaviour changes users may notice
+  (e.g. a flag combination now rejected); major = incompatible config or removed flags.
+- Every bump gets a tag, a `CHANGELOG.md` entry, the README badge and `docs/STATUS.md`.
+- Tags map 1:1 to versions and are never reused.
 
 ---
 
@@ -171,84 +142,72 @@ gh release create v2.1.1 --generate-notes
 
 ```
 ask-cli/
-├── CLAUDE.md                  # This file
-├── pyproject.toml             # Package definition, deps, ruff config
-├── README.md
-├── src/
-│   └── ask_cli/
-│       ├── __init__.py
-│       ├── cli.py             # Argument parsing only
-│       ├── config.py          # Config loading, XDG paths
-│       ├── output.py          # rich Console instance, rendering helpers
-│       ├── exceptions.py      # Typed exception hierarchy
-│       ├── core/
-│       │   ├── conversation.py
-│       │   ├── templates.py
-│       │   └── history.py
-│       └── providers/
-│           ├── base.py        # BaseProvider abstract class
-│           ├── zai.py
-│           ├── anthropic.py
-│           ├── openai.py
-│           ├── google.py
-│           └── ollama.py
-├── tests/
-│   ├── conftest.py
-│   ├── test_config.py
-│   ├── test_cli.py
+├── CLAUDE.md · README.md · CHANGELOG.md · pyproject.toml
+├── .github/workflows/ci.yml
+├── src/ask_cli/
+│   ├── __init__.py          # __version__
+│   ├── cli.py               # parsing, flag validation, dispatch, error boundary
+│   ├── config.py            # AppPaths, load_config, validation, set_default_provider
+│   ├── output.py            # consoles, ResponseDisplay, ConsoleUI, confirm, renderers
+│   ├── exceptions.py        # AskCLIError hierarchy (with hints)
 │   ├── core/
-│   │   └── test_conversation.py
+│   │   ├── conversation.py  # run_query, completeness check
+│   │   ├── history.py       # -c conversation history
+│   │   ├── templates.py     # built-in + user templates, prompt composition
+│   │   ├── context.py       # Linux vs Windows-via-WSL prompt selection
+│   │   ├── commands.py      # --cmd flow, destructive patterns, command execution
+│   │   ├── agent.py         # --agent loop (AgentUI protocol)
+│   │   ├── files.py         # -f / -F attachments
+│   │   ├── fences.py        # fenced code block parsing
+│   │   ├── saved.py         # --save / --recall
+│   │   ├── stats.py         # --stats
+│   │   └── storage.py       # atomic owner-only JSON files
 │   └── providers/
-│       ├── test_zai.py
-│       └── test_base.py
-└── docs/
-    └── ask-cli-prd-merged.md
+│       ├── __init__.py      # registry, get_provider
+│       ├── base.py · errors.py
+│       └── anthropic.py · zai.py · openai.py · ollama.py · google.py
+├── tests/                   # mirrors src/; conftest.py holds shared fixtures
+└── docs/                    # PRD, STATUS, RELEASE-CHECKLIST, one-off guides
 ```
 
 ---
 
-## Key Technical Decisions (summary)
+## Key Technical Decisions
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
-| Config location | XDG (`~/.config/ask/`, `~/.local/share/ask/`) | Linux standard, distributable |
+| Config location | XDG (`~/.config/ask/`, `~/.local/share/ask/`) | Linux standard |
 | Default max_tokens | 4096 | 1024 was too restrictive |
-| `--quick` max_tokens | 256 | Terse one-liner answers |
-| Streaming | Always on, no flag | Foundational UX |
-| UI library | `rich` only | Replaces pygments + prompt_toolkit |
-| Interactive mode | Deferred v3.0 | `-c` flag covers terminal use cases better |
-| RAG | Deferred, optional extra | Too heavy for core install |
-| Voice input | Removed | Conflicts with terminal-first philosophy |
-| Type hints | Pragmatic | Signatures annotated, obvious locals skipped |
-| Docstrings | None | Self-documenting code + inline comments only |
-| Coverage | Soft 80% on core | Meaningful tests over hitting numbers |
-
-Full decisions log: `.claude/memory/decisions.md`
-
----
-
-## Workflow: Plan Before Code
-
-**Always enter plan mode before writing any code.** No exceptions, regardless of how small the task seems.
-
-### Process
-1. **Enter plan mode** — explore the codebase, understand the scope, design the approach
-2. **Write the plan** — Claude Code saves plans to `~/.claude/plans/` with a generated filename
-3. **Get approval** — present the plan and wait for explicit user sign-off
-4. **(Optional, local only)** — symlink the plan into `docs/plans/<descriptive-name>.md` for easier navigation during the session. These symlinks are **gitignored** because they point outside the repo and don't resolve on other clones.
-5. **Then code** — only start implementation after the plan is approved
-
-### Why plans aren't in git
-Plans are working notes tied to a specific conversation. They capture state that's often stale a week later (known gaps, provisional decisions, file paths that may have moved). They're valuable locally while the work is live; they're noise in the repo's permanent history. Decisions worth preserving go into `CLAUDE.md` (architecture), `CHANGELOG.md` (what shipped), or `docs/STATUS.md` (current state).
+| `--quick` max_tokens | 1024 | Terse answers; reasoning models need headroom |
+| Streaming | Always on | Foundational UX |
+| Piped output | Verbatim text, diagnostics on stderr | `\| jq`, `> file` must just work |
+| Conflicting flags | Usage error (exit 2) | Never silently guess which flag wins |
+| State files | Atomic temp-file + rename, 0600 | No corruption, never world-readable |
+| Commands | Run under bash; agent steps get no stdin and a timeout | Models write bash; nothing hangs |
+| Agent | Plan always approved; destructive steps need "yes" | `--auto-approve` is not a blank cheque |
+| UI library | `rich` only | |
+| Interactive mode | Deferred | `-c` covers terminal use |
+| Type hints | Signatures annotated, enforced by ruff | |
+| Coverage | Soft 80% on core + providers | Meaningful tests over numbers |
 
 ---
+
+## Workflow
+
+- **Plan before code** for anything non-trivial (new features, refactors, multi-file
+  changes): use plan mode, get the plan approved, then implement with the TDD loop.
+  Small, obvious fixes can go straight to red → green.
+- Plans live in `~/.claude/plans/` (optionally symlinked into the gitignored
+  `docs/plans/`). They are working notes, not repo history: decisions worth keeping go
+  into this file, `CHANGELOG.md` or `docs/STATUS.md`.
 
 ## What NOT to Do
 
-- Do not add features beyond the current phase without discussion
-- Do not use `print()` anywhere — always `console.print()` via output module
-- Do not read config more than once (at startup)
-- Do not add dependencies without updating `pyproject.toml` and discussing the addition
-- Do not hardcode API keys, base URLs, or model names outside config/provider files
-- Do not catch exceptions in business logic just to re-raise the same exception
-- Do not write tests that only assert `is not None` — test actual behaviour
+- Don't add features beyond the current scope without discussing them.
+- Don't write to the terminal outside `output.py`, and never use `print()`.
+- Don't read the config more than once, or hardcode API keys, base URLs or model names
+  outside config/provider files.
+- Don't add dependencies without declaring them in `pyproject.toml` (with an upper bound)
+  and mentioning them in the CHANGELOG. Import only what's declared.
+- Don't catch exceptions just to re-raise the same exception, and don't swallow them.
+- Don't write tests that touch the real environment or only assert `is not None`.
