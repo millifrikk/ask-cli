@@ -2,21 +2,21 @@
 
 Living document. Update when we make meaningful changes so the next session can pick up without excavating chat history.
 
-**Last updated:** 2026-10-09 · **Version:** v2.4.1
+**Last updated:** 2026-10-09 · **Version:** v2.4.2
 
 ---
 
 ## Current version
 
-**v2.4.1** — Architecture cleanup: `cli.py` back to parsing/dispatch, provider dedup, single fence parser, `code_theme` wired, dead config options removed, hostname-based `base_url` check. Fifth release of the Oct 2026 hardening pass (phases 0–5, v2.3.5 → v2.4.2), which follows a full code review and flag audit.
+**v2.4.2** — Tooling and docs: ruff enforces the style rules, CI on GitHub Actions, CLAUDE.md/SECURITY.md/PRD/STATUS current, 95% coverage. Final release of the Oct 2026 hardening pass (phases 0–5, v2.3.5 → v2.4.2), which follows a full code review and flag audit.
 
 ```bash
-ask --version  # ask 2.4.1
+ask --version  # ask 2.4.2
 ```
 
 Release history:
 `v2.0.0` → `v2.1.0` → `v2.2.0` → `v2.2.1` → `v2.2.2` → `v2.2.3` → `v2.2.4` →
-`v2.3.0` → `v2.3.1` → `v2.3.2` → `v2.3.3` → `v2.3.4` → `v2.3.5` → `v2.3.6` → `v2.3.7` → `v2.4.0` → `v2.4.1`. All tags pushed; GitHub releases created for each.
+`v2.3.0` → `v2.3.1` → `v2.3.2` → `v2.3.3` → `v2.3.4` → `v2.3.5` → `v2.3.6` → `v2.3.7` → `v2.4.0` → `v2.4.1` → `v2.4.2`. All tags pushed; GitHub releases created for each.
 
 ---
 

@@ -6,6 +6,22 @@ follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.4.2] — 2026-10-09
+
+### Added
+- GitHub Actions CI: ruff and pytest on Python 3.11–3.13 for every push to
+  `main` and every pull request.
+
+### Changed
+- Ruff now enforces the project's style rules: no `print()`, no blind
+  `except`, annotated signatures, unused arguments, and bandit security
+  checks (tests exempt from annotation/bandit rules).
+- `CLAUDE.md` rewritten to match the current architecture and workflow
+  (TDD loop, test isolation, stdout/stderr split, release process);
+  `SECURITY.md` documents the v2.4 command-safety model and its limits;
+  `CONTRIBUTING.md`, the PRD and `docs/STATUS.md` updated.
+- Test coverage 95% overall (every module ≥ 80%).
+
 ## [2.4.1] — 2026-10-09
 
 ### Fixed
@@ -349,7 +365,8 @@ follows [SemVer](https://semver.org/).
   OpenAI, Google Gemini, Ollama), streaming, domain modes, conversation
   history, save/recall, agent mode, and XDG-compliant config.
 
-[Unreleased]: https://github.com/millifrikk/ask-cli/compare/v2.4.1...HEAD
+[Unreleased]: https://github.com/millifrikk/ask-cli/compare/v2.4.2...HEAD
+[2.4.2]: https://github.com/millifrikk/ask-cli/compare/v2.4.1...v2.4.2
 [2.4.1]: https://github.com/millifrikk/ask-cli/compare/v2.4.0...v2.4.1
 [2.4.0]: https://github.com/millifrikk/ask-cli/compare/v2.3.7...v2.4.0
 [2.3.7]: https://github.com/millifrikk/ask-cli/compare/v2.3.6...v2.3.7
