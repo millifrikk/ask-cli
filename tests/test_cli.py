@@ -385,6 +385,44 @@ def test_error_hint_from_exception_is_rendered(capsys):
     assert "Check the templates directory." in err
 
 
+def test_every_provider_class_declares_its_registry_id():
+    from ask_cli.cli import PROVIDER_CLASSES
+
+    for name, provider_class in PROVIDER_CLASSES.items():
+        assert provider_class.provider_id == name
+        assert provider_class.display_name
+
+
+class TestProviderHint:
+    def test_auth_failure_names_env_var(self):
+        from ask_cli.cli import _provider_hint
+        from ask_cli.exceptions import ProviderError
+
+        hint = _provider_hint(ProviderError("x", provider="anthropic", status_code=401))
+        assert "ASK_ANTHROPIC_API_KEY" in hint
+
+    def test_keyless_ollama_gets_no_api_key_hint(self):
+        from ask_cli.cli import _provider_hint
+        from ask_cli.exceptions import ProviderError
+
+        hint = _provider_hint(ProviderError("x", provider="ollama", status_code=401))
+        assert hint is None or "API_KEY" not in hint
+
+    def test_model_not_found_suggests_list_models(self):
+        from ask_cli.cli import _provider_hint
+        from ask_cli.exceptions import ModelNotFoundError
+
+        hint = _provider_hint(ModelNotFoundError("x", provider="zai", status_code=404))
+        assert "ask -p zai --list-models" in hint
+
+    def test_rate_limit_suggests_waiting(self):
+        from ask_cli.cli import _provider_hint
+        from ask_cli.exceptions import ProviderError
+
+        hint = _provider_hint(ProviderError("x", provider="openai", status_code=429))
+        assert "try again" in hint
+
+
 # --- json mode ---
 
 

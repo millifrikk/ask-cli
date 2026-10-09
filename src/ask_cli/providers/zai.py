@@ -12,6 +12,9 @@ from ask_cli.providers.base import BaseProvider
 class ZaiProvider(BaseProvider):
     """Provider for Z.ai (Anthropic-compatible API at a custom base URL)."""
 
+    provider_id = "zai"
+    display_name = "Z.ai"
+
     def __init__(self, config: ProviderConfig) -> None:
         super().__init__(config)
         self._client: anthropic.Anthropic | None = None

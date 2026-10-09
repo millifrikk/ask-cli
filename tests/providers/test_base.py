@@ -10,6 +10,9 @@ from ask_cli.providers.base import BaseProvider
 
 
 class _ConfiguredProvider(BaseProvider):
+    provider_id = "acme"
+    display_name = "Acme"
+
     def is_configured(self) -> bool:
         return True
 
@@ -18,6 +21,9 @@ class _ConfiguredProvider(BaseProvider):
 
 
 class _UnconfiguredProvider(BaseProvider):
+    provider_id = "acme"
+    display_name = "Acme"
+
     def is_configured(self) -> bool:
         return False
 
@@ -34,3 +40,14 @@ def test_validate_raises_when_not_configured():
     provider = _UnconfiguredProvider(ProviderConfig())
     with pytest.raises(ProviderError, match="not configured"):
         provider.validate()
+
+
+def test_validate_error_names_provider_and_env_var():
+    provider = _UnconfiguredProvider(ProviderConfig())
+    with pytest.raises(ProviderError) as exc_info:
+        provider.validate()
+    error = exc_info.value
+    assert "Acme" in str(error)
+    assert error.provider == "acme"
+    assert "ASK_ACME_API_KEY" in error.hint
+    assert "providers.acme.api_key" in error.hint

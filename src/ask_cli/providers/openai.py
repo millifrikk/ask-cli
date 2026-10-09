@@ -12,6 +12,9 @@ from ask_cli.providers.base import BaseProvider
 class OpenAIProvider(BaseProvider):
     """Provider for the OpenAI API."""
 
+    provider_id = "openai"
+    display_name = "OpenAI"
+
     def __init__(self, config: ProviderConfig) -> None:
         super().__init__(config)
         self._client: openai.OpenAI | None = None

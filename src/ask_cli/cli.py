@@ -8,8 +8,10 @@ from pathlib import Path
 
 from ask_cli import __version__
 from ask_cli.config import (
+    KEYED_PROVIDERS,
     AppConfig,
     DefaultsConfig,
+    api_key_env_var,
     load_config,
     resolve_model,
     resolve_paths,
@@ -33,6 +35,7 @@ from ask_cli.core.templates import JSON_SYSTEM_SUFFIX, resolve_system_prompt
 from ask_cli.exceptions import (
     AskCLIError,
     ConfigError,
+    ModelNotFoundError,
     ProviderError,
     SavedResponseError,
 )
@@ -385,10 +388,15 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _provider_hint(error: ProviderError) -> str | None:
-    if error.status_code == 401:
-        return f"Set ASK_{error.provider.upper()}_API_KEY or add api_key to config."
+    if isinstance(error, ModelNotFoundError):
+        return f"Run `ask -p {error.provider} --list-models` to see the configured models."
+    if error.status_code == 401 and error.provider in KEYED_PROVIDERS:
+        return (
+            f"Check {api_key_env_var(error.provider)} or "
+            f"providers.{error.provider}.api_key in your config file."
+        )
     if error.status_code == 429:
-        return "Wait a moment and try again, or switch to a different provider."
+        return "Wait a moment and try again, or switch provider with -p."
     return None
 
 

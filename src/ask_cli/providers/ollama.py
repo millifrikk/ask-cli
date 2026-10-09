@@ -12,6 +12,9 @@ from ask_cli.providers.base import BaseProvider
 class OllamaProvider(BaseProvider):
     """Provider for Ollama running locally (OpenAI-compatible API)."""
 
+    provider_id = "ollama"
+    display_name = "Ollama"
+
     def __init__(self, config: ProviderConfig) -> None:
         super().__init__(config)
         self._client: openai.OpenAI | None = None

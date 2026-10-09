@@ -13,6 +13,9 @@ from ask_cli.providers.base import BaseProvider
 class GoogleProvider(BaseProvider):
     """Provider for Google Gemini via the google-genai SDK."""
 
+    provider_id = "google"
+    display_name = "Google Gemini"
+
     def __init__(self, config: ProviderConfig) -> None:
         super().__init__(config)
         self._client: genai.Client | None = None

@@ -12,6 +12,7 @@ from ask_cli.config import (
     AppPaths,
     _deep_merge,
     _validate_base_url,
+    api_key_env_var,
     load_config,
     resolve_model,
     resolve_paths,
@@ -269,3 +270,18 @@ class TestDefaultConfigImmutability:
         for run in ("first", "second"):
             written = (tmp_path / run / "config.json").read_text()
             assert "env-secret" not in written
+
+
+def test_api_key_env_var_naming():
+    assert api_key_env_var("anthropic") == "ASK_ANTHROPIC_API_KEY"
+    assert api_key_env_var("zai") == "ASK_ZAI_API_KEY"
+
+
+def test_invalid_json_hint_warns_against_deleting(tmp_path):
+    (tmp_path / "config.json").write_text("{ nope")
+    with pytest.raises(ConfigError) as exc_info:
+        load_config(_paths(tmp_path))
+    hint = exc_info.value.hint
+    assert hint is not None
+    assert "API keys" in hint
+    assert str(tmp_path / "config.json") in str(exc_info.value)

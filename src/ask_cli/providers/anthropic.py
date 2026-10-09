@@ -12,6 +12,9 @@ from ask_cli.providers.base import BaseProvider
 class AnthropicProvider(BaseProvider):
     """Provider for the native Anthropic API."""
 
+    provider_id = "anthropic"
+    display_name = "Anthropic"
+
     def __init__(self, config: ProviderConfig) -> None:
         super().__init__(config)
         self._client: anthropic.Anthropic | None = None

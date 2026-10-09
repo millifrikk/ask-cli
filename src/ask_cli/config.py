@@ -274,19 +274,19 @@ def _migrate_permissions(paths: AppPaths) -> None:
                     entry.chmod(0o600)
 
 
+KEYED_PROVIDERS = ("zai", "anthropic", "openai", "google")
+
+
+def api_key_env_var(provider_id: str) -> str:
+    return f"ASK_{provider_id.upper()}_API_KEY"
+
+
 def _apply_env_overrides(raw: dict) -> dict:
-    """Override API keys from environment variables."""
-    env_map = {
-        "ASK_ZAI_API_KEY": ("providers", "zai", "api_key"),
-        "ASK_ANTHROPIC_API_KEY": ("providers", "anthropic", "api_key"),
-        "ASK_OPENAI_API_KEY": ("providers", "openai", "api_key"),
-        "ASK_GOOGLE_API_KEY": ("providers", "google", "api_key"),
-    }
-    for env_var, path in env_map.items():
-        value = os.environ.get(env_var)
+    """Override API keys from ASK_<PROVIDER>_API_KEY environment variables."""
+    for provider_id in KEYED_PROVIDERS:
+        value = os.environ.get(api_key_env_var(provider_id))
         if value:
-            section, provider, key = path
-            raw.setdefault(section, {}).setdefault(provider, {})[key] = value
+            raw.setdefault("providers", {}).setdefault(provider_id, {})["api_key"] = value
     return raw
 
 
@@ -336,7 +336,11 @@ def load_config(paths: AppPaths) -> AppConfig:
     try:
         raw = json.loads(config_path.read_text())
     except json.JSONDecodeError as e:
-        raise ConfigError(f"Invalid JSON in config file {config_path}: {e}") from e
+        raise ConfigError(
+            f"Invalid JSON in config file {config_path}: {e}",
+            hint="Fix the syntax by hand. Don't delete the file: it holds your settings "
+            "and may hold API keys.",
+        ) from e
 
     merged = _deep_merge(DEFAULT_CONFIG, raw)
     merged = _apply_env_overrides(merged)
