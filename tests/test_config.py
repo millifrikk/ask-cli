@@ -285,3 +285,39 @@ def test_invalid_json_hint_warns_against_deleting(tmp_path):
     assert hint is not None
     assert "API keys" in hint
     assert str(tmp_path / "config.json") in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    ("content", "key_path"),
+    [
+        ([], "top level"),
+        ("x", "top level"),
+        ({"providers": None}, "providers"),
+        ({"providers": {"zai": None}}, "providers.zai"),
+        ({"providers": {"zai": {"api_key": 123}}}, "providers.zai.api_key"),
+        ({"defaults": None}, "defaults"),
+        ({"defaults": {"max_tokens": "4096"}}, "defaults.max_tokens"),
+        ({"defaults": {"max_tokens": 0}}, "defaults.max_tokens"),
+        ({"defaults": {"history_ttl_hours": True}}, "defaults.history_ttl_hours"),
+        ({"default_provider": 5}, "default_provider"),
+        ({"features": {"clipboard": "yes"}}, "features.clipboard"),
+        ({"output": {"code_theme": None}}, "output.code_theme"),
+    ],
+)
+def test_wrong_shapes_raise_config_error_naming_the_key(tmp_path, content, key_path):
+    (tmp_path / "config.json").write_text(json.dumps(content))
+    with pytest.raises(ConfigError) as exc_info:
+        load_config(_paths(tmp_path))
+    assert key_path in str(exc_info.value)
+    assert str(tmp_path / "config.json") in str(exc_info.value)
+
+
+def test_non_utf8_config_raises_config_error(tmp_path):
+    (tmp_path / "config.json").write_bytes(b"\xff\xfe")
+    with pytest.raises(ConfigError):
+        load_config(_paths(tmp_path))
+
+
+def test_unknown_keys_are_tolerated(tmp_path):
+    (tmp_path / "config.json").write_text(json.dumps({"legacy_option": 1, "providers": {}}))
+    assert load_config(_paths(tmp_path)).default_provider == "ollama"

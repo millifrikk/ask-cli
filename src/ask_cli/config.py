@@ -7,6 +7,7 @@ import os
 import stat
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import NoReturn
 
 from ask_cli.core.storage import write_private_json
 from ask_cli.exceptions import ConfigError, StorageError
@@ -318,6 +319,71 @@ def _parse_provider_config(data: dict, provider_name: str = "") -> ProviderConfi
     )
 
 
+_FIX_HINT = "Fix it by hand. Don't delete the file: it holds your settings and may hold API keys."
+
+_PROVIDER_FIELDS = ("api_key", "base_url", "default_model", "fast_model", "smart_model")
+
+# Expected type per key within each top-level section. "positive" means an int > 0.
+_SECTION_FIELDS: dict[str, dict[str, type | str]] = {
+    "defaults": {
+        "max_tokens": "positive",
+        "quick_max_tokens": "positive",
+        "history_ttl_hours": "positive",
+        "system_prompt": str,
+        "system_prompt_windows": str,
+    },
+    "features": {"clipboard": bool, "syntax_highlighting": bool},
+    "output": {"code_theme": str, "markdown": bool},
+    "offline_fallback": {"enabled": bool, "provider": str},
+}
+
+
+def _type_problem(value: object, expected: type | str) -> str | None:
+    if expected == "positive":
+        # bool is an int subclass; `true` is never a sensible token count
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            return "must be a positive whole number"
+        return None
+    if not isinstance(value, expected):  # type: ignore[arg-type]
+        return f"must be a {'true/false value' if expected is bool else 'string'}"
+    return None
+
+
+def _validate_shape(raw: object, config_path: Path) -> None:
+    """Raise ConfigError naming the offending key if the config has the wrong shape.
+
+    Unknown keys are ignored so older or hand-extended config files keep loading.
+    """
+
+    def fail(key_path: str, problem: str) -> NoReturn:
+        raise ConfigError(
+            f"Invalid config file {config_path}: {key_path} {problem}.", hint=_FIX_HINT
+        )
+
+    if not isinstance(raw, dict):
+        fail("top level", "must be a JSON object")
+    if "default_provider" in raw and not isinstance(raw["default_provider"], str):
+        fail("default_provider", "must be a string")
+
+    providers = raw.get("providers", {})
+    if not isinstance(providers, dict):
+        fail("providers", "must be an object")
+    for name, provider in providers.items():
+        if not isinstance(provider, dict):
+            fail(f"providers.{name}", "must be an object")
+        for field_name in _PROVIDER_FIELDS:
+            if field_name in provider and not isinstance(provider[field_name], str):
+                fail(f"providers.{name}.{field_name}", "must be a string")
+
+    for section, fields in _SECTION_FIELDS.items():
+        values = raw.get(section, {})
+        if not isinstance(values, dict):
+            fail(section, "must be an object")
+        for key, expected in fields.items():
+            if key in values and (problem := _type_problem(values[key], expected)):
+                fail(f"{section}.{key}", problem)
+
+
 def load_config(paths: AppPaths) -> AppConfig:
     """Load config from disk, creating defaults on first run."""
     _migrate_permissions(paths)
@@ -329,13 +395,12 @@ def load_config(paths: AppPaths) -> AppConfig:
         _check_permissions(config_path)
 
     try:
-        raw = json.loads(config_path.read_text())
-    except json.JSONDecodeError as e:
-        raise ConfigError(
-            f"Invalid JSON in config file {config_path}: {e}",
-            hint="Fix the syntax by hand. Don't delete the file: it holds your settings "
-            "and may hold API keys.",
-        ) from e
+        raw = json.loads(config_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        raise ConfigError(f"Invalid JSON in config file {config_path}: {e}", hint=_FIX_HINT) from e
+    except OSError as e:
+        raise ConfigError(f"Cannot read config file {config_path}: {e}") from e
+    _validate_shape(raw, config_path)
 
     merged = _deep_merge(DEFAULT_CONFIG, raw)
     merged = _apply_env_overrides(merged)
