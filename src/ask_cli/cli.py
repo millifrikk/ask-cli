@@ -29,7 +29,13 @@ from ask_cli.core.conversation import run_query
 from ask_cli.core.fences import is_json_response
 from ask_cli.core.files import read_attachments
 from ask_cli.core.history import ConversationHistory
-from ask_cli.core.saved import delete_saved, list_saved, recall_response, save_response
+from ask_cli.core.saved import (
+    delete_saved,
+    list_saved,
+    recall_response,
+    save_response,
+    validate_name,
+)
 from ask_cli.core.stats import load_stats, record_query, reset_stats
 from ask_cli.core.storage import read_json_object, write_private_json
 from ask_cli.core.templates import JSON_SYSTEM_SUFFIX, resolve_system_prompt
@@ -205,6 +211,12 @@ def _read_piped_stdin() -> str:
     if not (stat.S_ISFIFO(mode) or stat.S_ISREG(mode)):
         return ""
     return sys.stdin.read().strip()
+
+
+def _run_and_report(command: str) -> None:
+    command_exit_code = run_command(command)
+    if command_exit_code != 0:
+        render_warning(f"Command exited with code {command_exit_code}.")
 
 
 def _log_command_or_warn(command: str, log_path: Path) -> None:
@@ -492,6 +504,9 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
         render_info("Statistics reset.")
         return 0
 
+    if args.save:
+        validate_name(args.save)  # fail before spending an API call
+
     # Build the query from positional args and/or piped stdin
     query_parts = [" ".join(args.query).strip(), _read_piped_stdin()]
     query = "\n\n".join(part for part in query_parts if part)
@@ -588,13 +603,16 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     if output_mode == "json" and response and not is_json_response(response):
         render_warning("The model's response is not valid JSON.")
 
-    # --save: persist the response after a successful query
+    exit_code = 0
+
+    # --save: persist the response; a failure is reported but doesn't skip the steps below
     if args.save and response:
         try:
             save_response(args.save, query, response, paths.saved_dir)
             render_info(f"Saved response as '{args.save}'.")
-        except SavedResponseError as e:
-            render_error(str(e))
+        except SavedResponseError as error:
+            render_error(str(error), hint=error.hint)
+            exit_code = 1
 
     # --cmd: extract and optionally execute the generated command
     if cmd_mode and response:
@@ -605,9 +623,7 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
             render_info("Dry run — command not executed.")
         elif args.execute and not is_destructive(command):
             _log_command_or_warn(command, paths.commands_log)
-            exit_code = run_command(command)
-            if exit_code != 0:
-                render_warning(f"Command exited with code {exit_code}.")
+            _run_and_report(command)
         elif not sys.stdin.isatty():
             # Piped input means there is nobody to answer a prompt
             render_warning(
@@ -625,7 +641,7 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
             )
             if confirmed:
                 _log_command_or_warn(command, paths.commands_log)
-                run_command(command)
+                _run_and_report(command)
 
     # --copy / --copy-code: send response or code block to clipboard
     if args.copy and response:
@@ -645,4 +661,4 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
         except StorageError as error:
             render_warning(f"Usage statistics not recorded: {error}")
 
-    return 0
+    return exit_code

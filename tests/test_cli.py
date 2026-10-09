@@ -482,7 +482,13 @@ def test_command_log_failure_warns_and_still_runs(capsys):
 # --- --cmd confirmation ---
 
 
-def _run_cmd(argv: list[str], response: str, answer: str | type[BaseException], tty: bool = True):
+def _run_cmd(
+    argv: list[str],
+    response: str,
+    answer: str | type[BaseException],
+    tty: bool = True,
+    command_exit: int = 0,
+):
     from ask_cli.cli import main
 
     input_mock = (
@@ -497,7 +503,7 @@ def _run_cmd(argv: list[str], response: str, answer: str | type[BaseException], 
         patch("ask_cli.cli.ConversationHistory"),
         patch("ask_cli.cli.run_query", return_value=response),
         patch("ask_cli.cli.log_command"),
-        patch("ask_cli.cli.run_command", return_value=0) as run_command,
+        patch("ask_cli.cli.run_command", return_value=command_exit) as run_command,
         input_mock,
     ):
         exit_code = main(argv)
@@ -620,6 +626,42 @@ def test_filtered_empty_response_says_why(capsys):
 def test_continue_without_recent_history_says_so(capsys):
     assert _main_with_provider(["-c", "and then?"], "ok", "end", loaded=False) == 0
     assert "starting a new conversation" in capsys.readouterr().err
+
+
+def test_failed_command_is_reported_but_does_not_change_ask_exit_code(capsys):
+    with patch("ask_cli.cli.run_command", return_value=3), patch("ask_cli.cli.log_command"):
+        exit_code = _main_with(["--cmd", "--execute", "list"], response="```bash\nls\n```")
+    assert exit_code == 0
+    assert "exited with code 3" in capsys.readouterr().err
+
+
+def test_confirmed_command_failure_is_reported(capsys):
+    exit_code, _ = _run_cmd(["--cmd", "list"], "```bash\nls\n```", "y", command_exit=2)
+    assert exit_code == 0
+    assert "exited with code 2" in capsys.readouterr().err
+
+
+# --- --save ---
+
+
+def test_invalid_save_name_fails_before_calling_the_model(capsys):
+    from ask_cli.cli import main
+
+    with (
+        patch("ask_cli.cli.load_config", return_value=_make_config()),
+        patch("ask_cli.cli.run_query") as mock_run,
+    ):
+        assert main(["--save", ".hidden", "question"]) == 1
+    mock_run.assert_not_called()
+    assert "must not start with '.'" in capsys.readouterr().err
+
+
+def test_save_failure_after_answer_exits_1(capsys):
+    from ask_cli.exceptions import SavedResponseError
+
+    with patch("ask_cli.cli.save_response", side_effect=SavedResponseError("disk full")):
+        assert _main_with(["--save", "notes", "question"]) == 1
+    assert "disk full" in capsys.readouterr().err
 
 
 # --- json mode ---

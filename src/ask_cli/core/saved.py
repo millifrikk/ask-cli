@@ -9,7 +9,8 @@ from ask_cli.exceptions import SavedResponseError, StorageError
 _INVALID_CHARS = frozenset("/\\")
 
 
-def _validate_name(name: str) -> None:
+def validate_name(name: str) -> None:
+    """Raise SavedResponseError unless name is usable as a saved-response file name."""
     if not name:
         raise SavedResponseError("Saved response name cannot be empty.")
     if name.startswith("."):
@@ -22,7 +23,7 @@ def _validate_name(name: str) -> None:
 
 def save_response(name: str, query: str, response: str, saved_dir: Path) -> None:
     """Write a named response entry to {saved_dir}/{name}.json."""
-    _validate_name(name)
+    validate_name(name)
     entry = {
         "name": name,
         "query": query,
@@ -37,7 +38,7 @@ def save_response(name: str, query: str, response: str, saved_dir: Path) -> None
 
 def recall_response(name: str, saved_dir: Path) -> dict:
     """Load a named response entry from disk. Raises SavedResponseError if not found."""
-    _validate_name(name)
+    validate_name(name)
     try:
         entry = read_json_object(saved_dir / f"{name}.json")
     except StorageError as e:
@@ -69,7 +70,7 @@ def list_saved(saved_dir: Path) -> list[dict]:
 
 def delete_saved(name: str, saved_dir: Path) -> None:
     """Delete a named response file. Raises SavedResponseError if not found."""
-    _validate_name(name)
+    validate_name(name)
     path = saved_dir / f"{name}.json"
     if not path.exists():
         raise SavedResponseError(f"No saved response named '{name}'.")
