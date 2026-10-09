@@ -2,12 +2,17 @@
 
 import json
 import os
+from collections.abc import Callable
+from contextlib import ExitStack
+from dataclasses import dataclass
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pyperclip
 import pytest
 
 from ask_cli import output
+from ask_cli.cli import main
 from ask_cli.config import (
     AppConfig,
     DefaultsConfig,
@@ -98,3 +103,67 @@ def config_file(tmp_path) -> Path:
         )
     )
     return path
+
+
+@dataclass
+class CliRun:
+    exit_code: int
+    run_query: MagicMock
+    run_agent: MagicMock
+    history: MagicMock
+    run_command: MagicMock
+
+
+@pytest.fixture
+def run_cli(minimal_app_config) -> Callable[..., CliRun]:
+    # Runs `ask` end to end with the model, agent, history and shell stubbed out.
+    # The loaded config is `minimal_app_config`: mutate that fixture to change it.
+    def run(
+        argv: list[str],
+        *,
+        response: str = "ok",
+        run_query_error: BaseException | type[BaseException] | None = None,
+        run_agent_error: BaseException | type[BaseException] | None = None,
+        history_loaded: bool = True,
+        history_error: BaseException | None = None,
+        stop_reason: str | None = None,
+        piped_stdin: str = "",
+        stdin_tty: bool = True,
+        input_answer: str | type[BaseException] | None = None,
+        command_exit: int = 0,
+    ) -> CliRun:
+        if input_answer is None:
+            input_patch = patch("builtins.input", side_effect=AssertionError("unexpected prompt"))
+        elif isinstance(input_answer, str):
+            input_patch = patch("builtins.input", return_value=input_answer)
+        else:
+            input_patch = patch("builtins.input", side_effect=input_answer)
+
+        with ExitStack() as stack:
+            stack.enter_context(patch("ask_cli.cli.load_config", return_value=minimal_app_config))
+            stack.enter_context(patch("ask_cli.cli._read_piped_stdin", return_value=piped_stdin))
+            stack.enter_context(patch("sys.stdin.isatty", return_value=stdin_tty))
+            stack.enter_context(input_patch)
+            history_class = stack.enter_context(patch("ask_cli.cli.ConversationHistory"))
+            run_query = stack.enter_context(
+                patch("ask_cli.cli.run_query", return_value=response, side_effect=run_query_error)
+            )
+            run_agent = stack.enter_context(
+                patch("ask_cli.cli.run_agent", side_effect=run_agent_error)
+            )
+            run_command = stack.enter_context(
+                patch("ask_cli.core.commands.run_command", return_value=command_exit)
+            )
+            if stop_reason is not None:
+                provider = MagicMock(last_stop_reason=stop_reason)
+                stack.enter_context(patch("ask_cli.cli.get_provider", return_value=provider))
+
+            history = history_class.return_value
+            history.messages = []
+            history.load.return_value = history_loaded
+            history.load.side_effect = history_error
+            exit_code = main(argv)
+
+        return CliRun(exit_code, run_query, run_agent, history, run_command)
+
+    return run
