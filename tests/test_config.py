@@ -246,3 +246,26 @@ class TestResolvePaths:
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "second"))
         second = resolve_paths()
         assert first.data_dir != second.data_dir
+
+
+class TestDefaultConfigImmutability:
+    def test_load_config_does_not_mutate_default_config(self, tmp_path, monkeypatch):
+        import copy
+
+        from ask_cli.config import DEFAULT_CONFIG
+
+        snapshot = copy.deepcopy(DEFAULT_CONFIG)
+        monkeypatch.setenv("ASK_ANTHROPIC_API_KEY", "env-secret")
+        (tmp_path / "config.json").write_text("{}")
+        load_config(_paths(tmp_path))
+        assert snapshot == DEFAULT_CONFIG
+
+    def test_first_run_file_never_contains_env_keys(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("ASK_ANTHROPIC_API_KEY", "env-secret")
+        monkeypatch.setenv("ASK_OPENAI_API_KEY", "env-secret-2")
+        # A prior load in the same process used to poison DEFAULT_CONFIG
+        load_config(_paths(tmp_path / "first"))
+        load_config(_paths(tmp_path / "second"))
+        for run in ("first", "second"):
+            written = (tmp_path / run / "config.json").read_text()
+            assert "env-secret" not in written
