@@ -246,7 +246,7 @@ def test_list_models_marks_only_the_default_tier(capsys):
     assert "default" in lines[0]
 
 
-class TestConsoleAgentUI:
+class TestConsoleUI:
     @pytest.fixture(autouse=True)
     def captured_console(self):
         output.console = Console(file=io.StringIO(), width=200)
@@ -256,11 +256,11 @@ class TestConsoleAgentUI:
         return output.console.file.getvalue()
 
     def test_step_line_shows_markup_literally(self):
-        output.ConsoleAgentUI().show_step(1, 5, "echo [bold red]FAKE[/bold red]")
+        output.ConsoleUI().show_step(1, 5, "echo [bold red]FAKE[/bold red]")
         assert "echo [bold red]FAKE[/bold red]" in self._text()
 
     def test_command_output_shows_markup_literally(self):
-        output.ConsoleAgentUI().show_output("[link=http://evil]click[/link]")
+        output.ConsoleUI().show_output("[link=http://evil]click[/link]")
         assert "[link=http://evil]click[/link]" in self._text()
 
     @pytest.mark.parametrize(
@@ -268,11 +268,11 @@ class TestConsoleAgentUI:
     )
     def test_recovery_choice(self, answer, choice):
         with patch("builtins.input", return_value=answer):
-            assert output.ConsoleAgentUI().choose_recovery() == choice
+            assert output.ConsoleUI().choose_recovery() == choice
 
     def test_recovery_on_eof_aborts(self):
         with patch("builtins.input", side_effect=EOFError):
-            assert output.ConsoleAgentUI().choose_recovery() == "abort"
+            assert output.ConsoleUI().choose_recovery() == "abort"
 
     def test_stream_returns_full_text(self):
-        assert output.ConsoleAgentUI().stream(iter(["1. ", "ls"])) == "1. ls"
+        assert output.ConsoleUI().stream(iter(["1. ", "ls"])) == "1. ls"

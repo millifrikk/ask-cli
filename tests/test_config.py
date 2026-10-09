@@ -321,3 +321,32 @@ def test_non_utf8_config_raises_config_error(tmp_path):
 def test_unknown_keys_are_tolerated(tmp_path):
     (tmp_path / "config.json").write_text(json.dumps({"legacy_option": 1, "providers": {}}))
     assert load_config(_paths(tmp_path)).default_provider == "ollama"
+
+
+def test_set_default_provider_writes_privately_and_keeps_other_keys(tmp_path):
+    from ask_cli.config import set_default_provider
+
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps({"default_provider": "zai", "providers": {"zai": {}}}))
+    config_path.chmod(0o644)
+    set_default_provider(config_path, "anthropic")
+    saved = json.loads(config_path.read_text())
+    assert saved == {"default_provider": "anthropic", "providers": {"zai": {}}}
+    assert config_path.stat().st_mode & 0o777 == 0o600
+
+
+def test_set_default_provider_rejects_unknown_provider(tmp_path):
+    from ask_cli.config import set_default_provider
+
+    with pytest.raises(ConfigError, match="Unknown provider"):
+        set_default_provider(tmp_path / "config.json", "bogus")
+
+
+def test_set_default_provider_refuses_to_clobber_corrupt_config(tmp_path):
+    from ask_cli.config import set_default_provider
+
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{ broken")
+    with pytest.raises(ConfigError):
+        set_default_provider(config_path, "anthropic")
+    assert config_path.read_text() == "{ broken"

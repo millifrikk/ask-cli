@@ -125,8 +125,8 @@ class ResponseDisplay:
         return Text(text)
 
 
-class ConsoleAgentUI:
-    """Terminal implementation of core.agent.AgentUI."""
+class ConsoleUI:
+    """Terminal implementation of core.agent.AgentUI and core.commands.CommandUI."""
 
     def stream(self, chunks: Iterable[str]) -> str:
         received: list[str] = []

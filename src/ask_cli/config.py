@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import NoReturn
 
-from ask_cli.core.storage import write_private_json
+from ask_cli.core.storage import read_json_object, write_private_json
 from ask_cli.exceptions import ConfigError, StorageError
 
 
@@ -270,6 +270,7 @@ def _migrate_permissions(paths: AppPaths) -> None:
                     entry.chmod(0o600)
 
 
+KNOWN_PROVIDERS = ("zai", "anthropic", "openai", "google", "ollama")
 KEYED_PROVIDERS = ("zai", "anthropic", "openai", "google")
 
 
@@ -460,3 +461,18 @@ def resolve_model(
     if fast and provider_config.fast_model:
         return provider_config.fast_model
     return provider_config.default_model
+
+
+def set_default_provider(config_path: Path, provider_name: str) -> None:
+    """Rewrite default_provider in the config file, keeping every other key."""
+    if provider_name not in KNOWN_PROVIDERS:
+        raise ConfigError(
+            f"Unknown provider '{provider_name}'.",
+            hint=f"Available providers: {', '.join(KNOWN_PROVIDERS)}",
+        )
+    try:
+        raw = read_json_object(config_path) or {}
+        raw["default_provider"] = provider_name
+        write_private_json(config_path, raw)
+    except StorageError as e:
+        raise ConfigError(f"Failed to update config: {e}", hint=_FIX_HINT) from e

@@ -3,6 +3,7 @@
 from collections.abc import Callable
 
 from ask_cli.core.history import ConversationHistory
+from ask_cli.exceptions import AskCLIError
 from ask_cli.providers.base import BaseProvider
 
 
@@ -43,3 +44,26 @@ def run_query(
     if interrupted:
         raise KeyboardInterrupt
     return full_response
+
+
+def check_completeness(
+    response: str, stop_reason: str | None, max_tokens: int, quick: bool
+) -> str | None:
+    """Raise AskCLIError for an empty response; return a warning if it was cut off."""
+    longer = "drop --quick" if quick else "raise defaults.max_tokens in your config"
+    if not response:
+        if stop_reason == "filtered":
+            raise AskCLIError(
+                "The model returned an empty response: it was blocked by a content filter.",
+                hint="Rephrase the question, or try another provider with -p.",
+            )
+        hint = (
+            f"The {max_tokens}-token limit was used up before any text (reasoning models do "
+            f"this); {longer}."
+            if stop_reason == "max_tokens"
+            else "Try again, or try another model with --smart or -p."
+        )
+        raise AskCLIError("The model returned an empty response.", hint=hint)
+    if stop_reason == "max_tokens":
+        return f"Response was cut off at the {max_tokens}-token limit; {longer}."
+    return None

@@ -4,28 +4,27 @@ import argparse
 import os
 import stat
 import sys
-from pathlib import Path
+from dataclasses import dataclass
 
 from ask_cli import __version__
 from ask_cli.config import (
     KEYED_PROVIDERS,
     AppConfig,
-    DefaultsConfig,
+    AppPaths,
     api_key_env_var,
     load_config,
     resolve_model,
     resolve_paths,
+    set_default_provider,
 )
 from ask_cli.core.agent import run_agent
 from ask_cli.core.commands import (
     CMD_SYSTEM_SUFFIX,
-    extract_command,
     extract_first_code_block,
-    is_destructive,
-    log_command,
-    run_command,
+    handle_generated_command,
 )
-from ask_cli.core.conversation import run_query
+from ask_cli.core.context import select_base_system_prompt
+from ask_cli.core.conversation import check_completeness, run_query
 from ask_cli.core.fences import is_json_response
 from ask_cli.core.files import read_attachments
 from ask_cli.core.history import ConversationHistory
@@ -37,8 +36,7 @@ from ask_cli.core.saved import (
     validate_name,
 )
 from ask_cli.core.stats import load_stats, record_query, reset_stats
-from ask_cli.core.storage import read_json_object, write_private_json
-from ask_cli.core.templates import JSON_SYSTEM_SUFFIX, resolve_system_prompt
+from ask_cli.core.templates import JSON_SYSTEM_SUFFIX, join_prompt, resolve_system_prompt
 from ask_cli.exceptions import (
     AskCLIError,
     ConfigError,
@@ -48,9 +46,8 @@ from ask_cli.exceptions import (
     StorageError,
 )
 from ask_cli.output import (
-    ConsoleAgentUI,
+    ConsoleUI,
     ResponseDisplay,
-    confirm,
     copy_to_clipboard,
     disable_color,
     render_error,
@@ -62,108 +59,10 @@ from ask_cli.output import (
     render_stats,
     render_warning,
 )
-from ask_cli.providers.anthropic import AnthropicProvider
+from ask_cli.providers import PROVIDER_CLASSES, get_provider, provider_statuses
 from ask_cli.providers.base import BaseProvider
-from ask_cli.providers.google import GoogleProvider
-from ask_cli.providers.ollama import OllamaProvider
-from ask_cli.providers.openai import OpenAIProvider
-from ask_cli.providers.zai import ZaiProvider
 
 DOMAIN_FLAGS = ("sap", "docker", "sql", "git", "k8s", "aws", "security", "perf")
-
-PROVIDER_CLASSES: dict[str, type[BaseProvider]] = {
-    "zai": ZaiProvider,
-    "anthropic": AnthropicProvider,
-    "openai": OpenAIProvider,
-    "google": GoogleProvider,
-    "ollama": OllamaProvider,
-}
-
-
-def _parent_cmdline() -> list[str]:
-    """Read `/proc/PPid/cmdline` (NUL-separated) and return argv as a list. Empty on failure."""
-    try:
-        with open(f"/proc/{os.getppid()}/cmdline", "rb") as f:
-            raw = f.read().decode("utf-8", errors="replace")
-        return [arg for arg in raw.split("\0") if arg]
-    except OSError:
-        return []
-
-
-def _invocation_is_interactive_wsl() -> bool:
-    """True if we're in an interactive WSL shell — user typed this, not proxied by wsl.exe.
-
-    Three signals must all agree:
-      1. We're in WSL (`WSL_DISTRO_NAME` or `WSL_INTEROP` set).
-      2. At least one of stdin/stdout is a TTY. Under Windows Terminal + ConPTY
-         this isn't enough on its own because wsl.exe proxies a TTY through.
-      3. The parent process is an interactive shell — specifically, its argv
-         does NOT contain `-c` and it isn't `/init`. `wsl.exe <cmd>` spawns
-         `bash -c "<cmd>"` to parse the command line, which has `-c`. A shell
-         a user typed `ask "..."` into has no `-c` (it's reading from a TTY).
-    """
-    try:
-        in_wsl = bool(os.environ.get("WSL_DISTRO_NAME") or os.environ.get("WSL_INTEROP"))
-        if not in_wsl:
-            return False
-        if not (sys.stdin.isatty() or sys.stdout.isatty()):
-            return False
-        argv = _parent_cmdline()
-        if not argv:
-            return False
-        if "-c" in argv:
-            return False
-        return not (argv[0].endswith("/init") or argv[0] == "init")
-    except (AttributeError, OSError):
-        return False
-
-
-def _select_base_system_prompt(defaults: DefaultsConfig) -> str:
-    """Pick the system prompt for the current invocation context.
-
-    `ASK_CONTEXT=windows` selects the Windows/general prompt; anything else uses
-    the Linux default. Set by the PowerShell wrapper (Path A) or the User-scope
-    env var + WSLENV propagation (Path B).
-
-    Because `WSLENV=ASK_CONTEXT/u` propagates the value into *every* WSL session
-    — not just ones spawned by `wsl.exe` from PowerShell — we additionally
-    override back to Linux when we can detect the user is typing directly in an
-    interactive WSL terminal.
-    """
-    context = os.environ.get("ASK_CONTEXT", "linux").lower()
-    if context == "windows" and _invocation_is_interactive_wsl():
-        context = "linux"
-    if context == "windows" and defaults.system_prompt_windows:
-        return defaults.system_prompt_windows
-    return defaults.system_prompt
-
-
-def _build_provider(name: str, config: AppConfig) -> BaseProvider:
-    if name not in PROVIDER_CLASSES:
-        raise ConfigError(
-            f"Unknown provider '{name}'.",
-            hint=f"Available providers: {', '.join(PROVIDER_CLASSES)}",
-        )
-    provider_config = config.providers.get(name)
-    if provider_config is None:
-        raise ConfigError(
-            f"No configuration found for provider '{name}'.",
-            hint=f"Add a providers.{name} section to your config file.",
-        )
-    return PROVIDER_CLASSES[name](provider_config)
-
-
-def _handle_list_providers(config: AppConfig) -> None:
-    rows = []
-    for name, provider_class in PROVIDER_CLASSES.items():
-        provider_config = config.providers.get(name)
-        if provider_config is None:
-            rows.append((name, "not configured", ""))
-            continue
-        provider = provider_class(provider_config)
-        status = "configured" if provider.is_configured() else "not configured"
-        rows.append((name, status, provider_config.default_model))
-    render_provider_table(rows)
 
 
 def _handle_list_models(provider_name: str, config: AppConfig) -> None:
@@ -181,27 +80,6 @@ def _handle_list_models(provider_name: str, config: AppConfig) -> None:
     render_model_list(provider_name, models)
 
 
-def _check_completeness(
-    response: str, stop_reason: str | None, max_tokens: int, quick: bool
-) -> None:
-    longer = "drop --quick" if quick else "raise defaults.max_tokens in your config"
-    if not response:
-        if stop_reason == "filtered":
-            raise AskCLIError(
-                "The model returned an empty response: it was blocked by a content filter.",
-                hint="Rephrase the question, or try another provider with -p.",
-            )
-        hint = (
-            f"The {max_tokens}-token limit was used up before any text (reasoning models do "
-            f"this); {longer}."
-            if stop_reason == "max_tokens"
-            else "Try again, or try another model with --smart or -p."
-        )
-        raise AskCLIError("The model returned an empty response.", hint=hint)
-    if stop_reason == "max_tokens":
-        render_warning(f"Response was cut off at the {max_tokens}-token limit; {longer}.")
-
-
 def _read_piped_stdin() -> str:
     # Only read when stdin is a pipe or a redirected file. A TTY, /dev/null or an
     # IDE's never-closed stdin (character device or socket) would block forever.
@@ -212,35 +90,6 @@ def _read_piped_stdin() -> str:
     if not (stat.S_ISFIFO(mode) or stat.S_ISREG(mode)):
         return ""
     return sys.stdin.read().strip()
-
-
-def _run_and_report(command: str) -> None:
-    command_exit_code = run_command(command)
-    if command_exit_code != 0:
-        render_warning(f"Command exited with code {command_exit_code}.")
-
-
-def _log_command_or_warn(command: str, log_path: Path) -> None:
-    # The log is an audit trail, not a safety gate: warn rather than block the command
-    try:
-        log_command(command, log_path)
-    except StorageError as error:
-        render_warning(str(error))
-
-
-def _handle_set_default_provider(provider_name: str, config_path: Path) -> None:
-    if provider_name not in PROVIDER_CLASSES:
-        raise ConfigError(
-            f"Unknown provider '{provider_name}'.",
-            hint=f"Available providers: {', '.join(PROVIDER_CLASSES)}",
-        )
-    try:
-        raw = read_json_object(config_path) or {}
-        raw["default_provider"] = provider_name
-        write_private_json(config_path, raw)
-    except StorageError as e:
-        raise ConfigError(f"Failed to update config: {e}") from e
-    render_info(f"Default provider set to '{provider_name}'.")
 
 
 TASK_FLAGS = ("explain", "fix", "optimize")
@@ -536,123 +385,125 @@ def _provider_hint(error: ProviderError) -> str | None:
     return None
 
 
+@dataclass
+class _Request:
+    query: str
+    provider: BaseProvider
+    model: str
+    max_tokens: int
+    system_prompt: str | None
+    cmd_mode: bool
+    stats_mode: str
+
+
 def _run(args: argparse.Namespace) -> int:
     paths = resolve_paths()
     config = load_config(paths)
-
-    # Management commands — dispatch and exit
-    if args.clear:
-        history = ConversationHistory(paths.history_file, config.defaults.history_ttl_hours)
-        history.clear()
-        render_info("Conversation history cleared.")
-        return 0
-
-    if args.list_providers:
-        _handle_list_providers(config)
-        return 0
-
     provider_name = args.provider or config.default_provider
 
-    if args.list_models:
-        _handle_list_models(provider_name, config)
-        return 0
-
-    if args.set_default_provider:
-        _handle_set_default_provider(args.set_default_provider, paths.config_file)
-        return 0
-
-    # Save & recall management — dispatch and exit
-    if args.list_saved:
-        render_saved_list(list_saved(paths.saved_dir))
-        return 0
-
-    if args.delete_saved:
-        delete_saved(args.delete_saved, paths.saved_dir)
-        render_info(f"Deleted saved response '{args.delete_saved}'.")
-        return 0
-
-    if args.recall:
-        entry = recall_response(args.recall, paths.saved_dir)
-        render_markdown(entry["response"])
-        return 0
-
-    if args.stats:
-        render_stats(load_stats(paths.stats_file))
-        return 0
-
-    if args.stats_reset:
-        reset_stats(paths.stats_file)
-        render_info("Statistics reset.")
+    if any(getattr(args, flag) for flag in MANAGEMENT_FLAGS):
+        _run_management(args, config, paths, provider_name)
         return 0
 
     if args.save:
         validate_name(args.save)  # fail before spending an API call
 
-    # Build the query from positional args and/or piped stdin
-    query_parts = [" ".join(args.query).strip(), _read_piped_stdin()]
-    query = "\n\n".join(part for part in query_parts if part)
-
-    if not query:
+    request = _prepare_request(args, config, paths, provider_name)
+    if request is None:
         sys.stderr.write(args.usage)
         render_error("No question given.", hint='Try: ask "your question"  (or ask --help)')
         return 2
 
-    if args.file or args.files:
-        attachments = read_attachments(
-            args.file or [],
-            args.files or [],
-            max_file_size=args.max_file_size * 1024,
-        )
-        for warning in attachments.warnings:
-            render_warning(warning)
-        if attachments.text:
-            query = f"{attachments.text}\n\n{query}"
-
-    provider = _build_provider(provider_name, config)
-
-    model = resolve_model(
-        config,
-        provider_name,
-        fast=args.fast,
-        smart=args.smart,
-        explicit=args.model,
-    )
-
-    max_tokens = config.defaults.quick_max_tokens if args.quick else config.defaults.max_tokens
-
-    templates = _determine_templates(args)
-    system_prompt = resolve_system_prompt(
-        templates, args.quick, paths.templates_dir, _select_base_system_prompt(config.defaults)
-    )
-
-    # Inject command-generation suffix when in cmd mode
-    cmd_mode = args.cmd or (args.dry_run and not args.agent)
-    if cmd_mode:
-        system_prompt = (
-            f"{system_prompt}\n\n{CMD_SYSTEM_SUFFIX}" if system_prompt else CMD_SYSTEM_SUFFIX
-        )
-        # --cmd generates a single shell command — auto-copy it (unless disabled in config
-        # or the user asked to copy the whole response) so it can be pasted directly.
-        if config.features.clipboard and not args.copy:
-            args.copy_code = True
-
-    # --agent: run the multi-step agent loop and return
     if args.agent:
         run_agent(
-            goal=query,
-            provider=provider,
-            model=model,
-            max_tokens=max_tokens,
-            base_system_prompt=system_prompt,
+            goal=request.query,
+            provider=request.provider,
+            model=request.model,
+            max_tokens=request.max_tokens,
+            base_system_prompt=request.system_prompt,
             max_steps=args.agent_max_steps,
             auto_approve=args.auto_approve,
             dry_run=args.dry_run,
             think=False if args.quick else None,
             log_path=paths.commands_log,
-            ui=ConsoleAgentUI(),
+            ui=ConsoleUI(),
         )
+        _record_stats(paths, request, response="")
         return 0
 
+    return _answer(args, config, paths, request)
+
+
+def _run_management(
+    args: argparse.Namespace, config: AppConfig, paths: AppPaths, provider_name: str
+) -> None:
+    if args.clear:
+        ConversationHistory(paths.history_file, config.defaults.history_ttl_hours).clear()
+        render_info("Conversation history cleared.")
+    elif args.list_providers:
+        render_provider_table(provider_statuses(config))
+    elif args.list_models:
+        _handle_list_models(provider_name, config)
+    elif args.set_default_provider:
+        set_default_provider(paths.config_file, args.set_default_provider)
+        render_info(f"Default provider set to '{args.set_default_provider}'.")
+    elif args.list_saved:
+        render_saved_list(list_saved(paths.saved_dir))
+    elif args.delete_saved:
+        delete_saved(args.delete_saved, paths.saved_dir)
+        render_info(f"Deleted saved response '{args.delete_saved}'.")
+    elif args.recall:
+        render_markdown(recall_response(args.recall, paths.saved_dir)["response"])
+    elif args.stats:
+        render_stats(load_stats(paths.stats_file))
+    elif args.stats_reset:
+        reset_stats(paths.stats_file)
+        render_info("Statistics reset.")
+
+
+def _prepare_request(
+    args: argparse.Namespace, config: AppConfig, paths: AppPaths, provider_name: str
+) -> _Request | None:
+    question = "\n\n".join(
+        part for part in (" ".join(args.query).strip(), _read_piped_stdin()) if part
+    )
+    if not question:
+        return None
+
+    query = question
+    if args.file or args.files:
+        attachments = read_attachments(
+            args.file or [], args.files or [], max_file_size=args.max_file_size * 1024
+        )
+        for warning in attachments.warnings:
+            render_warning(warning)
+        if attachments.text:
+            query = f"{attachments.text}\n\n{question}"
+
+    provider = get_provider(provider_name, config)
+    model = resolve_model(
+        config, provider_name, fast=args.fast, smart=args.smart, explicit=args.model
+    )
+    max_tokens = config.defaults.quick_max_tokens if args.quick else config.defaults.max_tokens
+
+    templates = _determine_templates(args)
+    system_prompt = resolve_system_prompt(
+        templates, args.quick, paths.templates_dir, select_base_system_prompt(config.defaults)
+    )
+    cmd_mode = args.cmd or (args.dry_run and not args.agent)
+    if cmd_mode:
+        system_prompt = join_prompt(system_prompt, CMD_SYSTEM_SUFFIX)
+    if _determine_output_mode(args) == "json":
+        system_prompt = join_prompt(system_prompt, JSON_SYSTEM_SUFFIX)
+
+    labels = [*templates]
+    labels += [label for label, on in (("cmd", cmd_mode), ("quick", args.quick)) if on]
+    stats_mode = "agent" if args.agent else "+".join(labels) or "default"
+
+    return _Request(query, provider, model, max_tokens, system_prompt, cmd_mode, stats_mode)
+
+
+def _answer(args: argparse.Namespace, config: AppConfig, paths: AppPaths, request: _Request) -> int:
     history = ConversationHistory(paths.history_file, config.defaults.history_ttl_hours)
     use_history = args.continue_session
     if use_history:
@@ -662,18 +513,13 @@ def _run(args: argparse.Namespace) -> int:
         history.start_new()
 
     output_mode = _determine_output_mode(args)
-    if output_mode == "json":
-        system_prompt = (
-            f"{system_prompt}\n\n{JSON_SYSTEM_SUFFIX}" if system_prompt else JSON_SYSTEM_SUFFIX
-        )
-
     with ResponseDisplay(output_mode) as display:
         response = run_query(
-            query=query,
-            provider=provider,
-            model=model,
-            max_tokens=max_tokens,
-            system_prompt=system_prompt,
+            query=request.query,
+            provider=request.provider,
+            model=request.model,
+            max_tokens=request.max_tokens,
+            system_prompt=request.system_prompt,
             history=history,
             use_history=use_history,
             on_chunk=display.update,
@@ -682,68 +528,50 @@ def _run(args: argparse.Namespace) -> int:
             think=False if args.quick else None,
         )
 
-    _check_completeness(response, provider.last_stop_reason, max_tokens, quick=args.quick)
-
-    if output_mode == "json" and response and not is_json_response(response):
+    stop_reason = request.provider.last_stop_reason
+    if warning := check_completeness(response, stop_reason, request.max_tokens, args.quick):
+        render_warning(warning)
+    if output_mode == "json" and not is_json_response(response):
         render_warning("The model's response is not valid JSON.")
 
     exit_code = 0
-
-    # --save: persist the response; a failure is reported but doesn't skip the steps below
-    if args.save and response:
+    # A failed save is reported but doesn't skip the steps below
+    if args.save:
         try:
-            save_response(args.save, query, response, paths.saved_dir)
+            save_response(args.save, request.query, response, paths.saved_dir)
             render_info(f"Saved response as '{args.save}'.")
         except SavedResponseError as error:
             render_error(str(error), hint=error.hint)
             exit_code = 1
 
-    # --cmd: extract and optionally execute the generated command
-    if cmd_mode and response:
-        command = extract_command(response)
-        if command is None:
-            render_warning("Could not extract a command from the response.")
-        elif args.dry_run:
-            render_info("Dry run — command not executed.")
-        elif args.execute and not is_destructive(command):
-            _log_command_or_warn(command, paths.commands_log)
-            _run_and_report(command)
-        elif not sys.stdin.isatty():
-            # Piped input means there is nobody to answer a prompt
-            render_warning(
-                "Not executing: stdin is not a terminal, so confirmation can't be asked. "
-                "The command was printed above; run it yourself."
-            )
-        else:
-            destructive = is_destructive(command)
-            if destructive:
-                render_warning("Destructive command detected — confirmation required.")
-            confirmed = (
-                confirm("Type 'yes' to execute: ", exact="yes")
-                if destructive
-                else confirm("Execute this command? [y/N]: ")
-            )
-            if confirmed:
-                _log_command_or_warn(command, paths.commands_log)
-                _run_and_report(command)
+    if request.cmd_mode:
+        handle_generated_command(
+            response,
+            dry_run=args.dry_run,
+            auto_execute=args.execute,
+            can_prompt=sys.stdin.isatty(),
+            log_path=paths.commands_log,
+            ui=ConsoleUI(),
+        )
 
-    # --copy / --copy-code: send response or code block to clipboard
-    if args.copy and response:
+    if args.copy:
         copy_to_clipboard(response, "Response")
-
-    if args.copy_code and response:
+    # --cmd auto-copies the command unless disabled in config or --copy took the response
+    auto_copy = request.cmd_mode and config.features.clipboard and not args.copy
+    if args.copy_code or auto_copy:
         code = extract_first_code_block(response)
         if code:
             copy_to_clipboard(code, "Code")
         else:
             render_warning("No code block found in response.")
 
-    # Record usage stats after a successful query; a stats failure must not lose the answer
-    if response:
-        try:
-            mode = "+".join(templates) or "default"
-            record_query(paths.stats_file, mode, len(query), len(response))
-        except StorageError as error:
-            render_warning(f"Usage statistics not recorded: {error}")
-
+    _record_stats(paths, request, response)
     return exit_code
+
+
+def _record_stats(paths: AppPaths, request: _Request, response: str) -> None:
+    # A stats failure must never lose the answer: warn and move on
+    try:
+        record_query(paths.stats_file, request.stats_mode, len(request.query), len(response))
+    except StorageError as error:
+        render_warning(f"Usage statistics not recorded: {error}")

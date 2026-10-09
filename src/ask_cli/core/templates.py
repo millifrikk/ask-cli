@@ -82,6 +82,11 @@ BUILTIN_TEMPLATES: dict[str, str] = {
 }
 
 
+def join_prompt(base: str | None, extra: str) -> str:
+    """Append an instruction block to a system prompt (which may be empty)."""
+    return f"{base}\n\n{extra}" if base else extra
+
+
 def resolve_system_prompt(
     templates: Sequence[str],
     quick: bool,

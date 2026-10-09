@@ -290,7 +290,7 @@ def test_dry_run_does_not_execute():
         patch("ask_cli.cli.run_query", return_value="```bash\nls -la\n```"),
         patch("sys.stdin.isatty", return_value=True),
         patch("ask_cli.cli.ConversationHistory") as mock_hist_class,
-        patch("ask_cli.cli.run_command") as mock_run_cmd,
+        patch("ask_cli.core.commands.run_command") as mock_run_cmd,
         patch("ask_cli.cli.render_info"),
     ):
         mock_hist = MagicMock()
@@ -391,14 +391,6 @@ def test_error_hint_from_exception_is_rendered(capsys):
     assert "Check the templates directory." in err
 
 
-def test_every_provider_class_declares_its_registry_id():
-    from ask_cli.cli import PROVIDER_CLASSES
-
-    for name, provider_class in PROVIDER_CLASSES.items():
-        assert provider_class.provider_id == name
-        assert provider_class.display_name
-
-
 class TestProviderHint:
     def test_auth_failure_names_env_var(self):
         from ask_cli.cli import _provider_hint
@@ -472,8 +464,10 @@ def test_command_log_failure_warns_and_still_runs(capsys):
     from ask_cli.exceptions import StorageError
 
     with (
-        patch("ask_cli.cli.log_command", side_effect=StorageError("Command not logged: x")),
-        patch("ask_cli.cli.run_command", return_value=0) as run_command,
+        patch(
+            "ask_cli.core.commands.log_command", side_effect=StorageError("Command not logged: x")
+        ),
+        patch("ask_cli.core.commands.run_command", return_value=0) as run_command,
     ):
         exit_code = _main_with(["--cmd", "--execute", "list files"], response="```bash\nls\n```")
     assert exit_code == 0
@@ -504,8 +498,8 @@ def _run_cmd(
         patch("sys.stdin.read", return_value=""),
         patch("ask_cli.cli.ConversationHistory"),
         patch("ask_cli.cli.run_query", return_value=response),
-        patch("ask_cli.cli.log_command"),
-        patch("ask_cli.cli.run_command", return_value=command_exit) as run_command,
+        patch("ask_cli.core.commands.log_command"),
+        patch("ask_cli.core.commands.run_command", return_value=command_exit) as run_command,
         input_mock,
     ):
         exit_code = main(argv)
@@ -599,7 +593,7 @@ def _main_with_provider(argv: list[str], response: str, stop_reason: str | None,
     provider.last_stop_reason = stop_reason
     with (
         patch("ask_cli.cli.load_config", return_value=_make_config()),
-        patch("ask_cli.cli._build_provider", return_value=provider),
+        patch("ask_cli.cli.get_provider", return_value=provider),
         patch("ask_cli.cli.ConversationHistory") as history_class,
         patch("ask_cli.cli.run_query", return_value=response),
     ):
@@ -631,7 +625,10 @@ def test_continue_without_recent_history_says_so(capsys):
 
 
 def test_failed_command_is_reported_but_does_not_change_ask_exit_code(capsys):
-    with patch("ask_cli.cli.run_command", return_value=3), patch("ask_cli.cli.log_command"):
+    with (
+        patch("ask_cli.core.commands.run_command", return_value=3),
+        patch("ask_cli.core.commands.log_command"),
+    ):
         exit_code = _main_with(["--cmd", "--execute", "list"], response="```bash\nls\n```")
     assert exit_code == 0
     assert "exited with code 3" in capsys.readouterr().err
@@ -705,7 +702,7 @@ def test_save_failure_after_answer_exits_1(capsys):
 def test_agent_receives_prompt_dry_run_think_and_a_console_ui():
     from ask_cli.cli import main
     from ask_cli.core.commands import CMD_SYSTEM_SUFFIX
-    from ask_cli.output import ConsoleAgentUI
+    from ask_cli.output import ConsoleUI
 
     with (
         patch("ask_cli.cli.load_config", return_value=_make_config()),
@@ -718,7 +715,7 @@ def test_agent_receives_prompt_dry_run_think_and_a_console_ui():
     assert kwargs["think"] is False
     assert "Docker" in kwargs["base_system_prompt"]
     assert kwargs["max_steps"] == 10
-    assert isinstance(kwargs["ui"], ConsoleAgentUI)
+    assert isinstance(kwargs["ui"], ConsoleUI)
 
 
 # --- flag semantics ---
@@ -992,228 +989,37 @@ def test_agent_does_not_call_run_query():
     mock_run.assert_not_called()
 
 
-# --- ASK_CONTEXT system prompt selection ---
-
-
-def test_default_context_uses_linux_system_prompt():
-    """No ASK_CONTEXT (or any value other than 'windows') uses the Linux prompt."""
-    from ask_cli.cli import _select_base_system_prompt
-
-    defaults = DefaultsConfig(
-        system_prompt="LINUX_PROMPT",
-        system_prompt_windows="WINDOWS_PROMPT",
-    )
-    with patch.dict("os.environ", {}, clear=False):
-        import os
-
-        os.environ.pop("ASK_CONTEXT", None)
-        assert _select_base_system_prompt(defaults) == "LINUX_PROMPT"
-
-
-def test_windows_context_uses_windows_system_prompt():
-    """ASK_CONTEXT=windows selects the Windows prompt when not in an interactive WSL shell."""
-    from ask_cli.cli import _select_base_system_prompt
-
-    defaults = DefaultsConfig(
-        system_prompt="LINUX_PROMPT",
-        system_prompt_windows="WINDOWS_PROMPT",
-    )
-    with (
-        patch.dict("os.environ", {"ASK_CONTEXT": "windows"}),
-        patch("ask_cli.cli._invocation_is_interactive_wsl", return_value=False),
-    ):
-        assert _select_base_system_prompt(defaults) == "WINDOWS_PROMPT"
-
-
-def test_windows_context_case_insensitive():
-    """ASK_CONTEXT=WINDOWS (uppercase) also selects the Windows prompt."""
-    from ask_cli.cli import _select_base_system_prompt
-
-    defaults = DefaultsConfig(
-        system_prompt="LINUX_PROMPT",
-        system_prompt_windows="WINDOWS_PROMPT",
-    )
-    with (
-        patch.dict("os.environ", {"ASK_CONTEXT": "WINDOWS"}),
-        patch("ask_cli.cli._invocation_is_interactive_wsl", return_value=False),
-    ):
-        assert _select_base_system_prompt(defaults) == "WINDOWS_PROMPT"
-
-
-def test_windows_context_falls_back_when_windows_prompt_empty():
-    """If Windows prompt is empty, fall back to Linux prompt — backwards-safe."""
-    from ask_cli.cli import _select_base_system_prompt
-
-    defaults = DefaultsConfig(
-        system_prompt="LINUX_PROMPT",
-        system_prompt_windows="",
-    )
-    with (
-        patch.dict("os.environ", {"ASK_CONTEXT": "windows"}),
-        patch("ask_cli.cli._invocation_is_interactive_wsl", return_value=False),
-    ):
-        assert _select_base_system_prompt(defaults) == "LINUX_PROMPT"
-
-
-def test_unknown_context_falls_back_to_linux():
-    """ASK_CONTEXT=mac (or anything unknown) uses the Linux prompt."""
-    from ask_cli.cli import _select_base_system_prompt
-
-    defaults = DefaultsConfig(
-        system_prompt="LINUX_PROMPT",
-        system_prompt_windows="WINDOWS_PROMPT",
-    )
-    with patch.dict("os.environ", {"ASK_CONTEXT": "mac"}):
-        assert _select_base_system_prompt(defaults) == "LINUX_PROMPT"
-
-
-def test_interactive_wsl_overrides_windows_context():
-    """In an interactive WSL terminal, ASK_CONTEXT=windows (leaked via WSLENV) is ignored."""
-    from ask_cli.cli import _select_base_system_prompt
-
-    defaults = DefaultsConfig(
-        system_prompt="LINUX_PROMPT",
-        system_prompt_windows="WINDOWS_PROMPT",
-    )
-    with (
-        patch.dict("os.environ", {"ASK_CONTEXT": "windows"}),
-        patch("ask_cli.cli._invocation_is_interactive_wsl", return_value=True),
-    ):
-        assert _select_base_system_prompt(defaults) == "LINUX_PROMPT"
-
-
-def test_non_interactive_wsl_keeps_windows_context():
-    """wsl.exe from PowerShell: ASK_CONTEXT=windows set, no TTY → Windows prompt."""
-    from ask_cli.cli import _select_base_system_prompt
-
-    defaults = DefaultsConfig(
-        system_prompt="LINUX_PROMPT",
-        system_prompt_windows="WINDOWS_PROMPT",
-    )
-    with (
-        patch.dict("os.environ", {"ASK_CONTEXT": "windows"}),
-        patch("ask_cli.cli._invocation_is_interactive_wsl", return_value=False),
-    ):
-        assert _select_base_system_prompt(defaults) == "WINDOWS_PROMPT"
-
-
-class TestInvocationIsInteractiveWsl:
-    """The heuristic itself — three signals: WSL marker + TTY + interactive parent shell."""
-
-    def test_requires_wsl_marker(self):
-        from ask_cli.cli import _invocation_is_interactive_wsl
-
-        with (
-            patch.dict("os.environ", {}, clear=True),
-            patch("sys.stdin.isatty", return_value=True),
-            patch("sys.stdout.isatty", return_value=True),
-            patch("ask_cli.cli._parent_cmdline", return_value=["-bash"]),
-        ):
-            assert _invocation_is_interactive_wsl() is False
-
-    def test_requires_tty(self):
-        from ask_cli.cli import _invocation_is_interactive_wsl
-
-        with (
-            patch.dict("os.environ", {"WSL_DISTRO_NAME": "Ubuntu"}, clear=True),
-            patch("sys.stdin.isatty", return_value=False),
-            patch("sys.stdout.isatty", return_value=False),
-            patch("ask_cli.cli._parent_cmdline", return_value=["-bash"]),
-        ):
-            assert _invocation_is_interactive_wsl() is False
-
-    def test_parent_with_dash_c_is_not_interactive(self):
-        """wsl.exe from PowerShell spawns `bash -c 'ask ...'` — parent has -c."""
-        from ask_cli.cli import _invocation_is_interactive_wsl
-
-        with (
-            patch.dict("os.environ", {"WSL_DISTRO_NAME": "Ubuntu"}, clear=True),
-            patch("sys.stdin.isatty", return_value=True),
-            patch("sys.stdout.isatty", return_value=True),
-            patch(
-                "ask_cli.cli._parent_cmdline",
-                return_value=["/bin/bash", "-c", "ask 'hello'"],
-            ),
-        ):
-            assert _invocation_is_interactive_wsl() is False
-
-    def test_parent_is_init_is_not_interactive(self):
-        """Some wsl.exe configs exec directly from /init without a shell layer."""
-        from ask_cli.cli import _invocation_is_interactive_wsl
-
-        with (
-            patch.dict("os.environ", {"WSL_DISTRO_NAME": "Ubuntu"}, clear=True),
-            patch("sys.stdin.isatty", return_value=True),
-            patch("sys.stdout.isatty", return_value=True),
-            patch(
-                "ask_cli.cli._parent_cmdline",
-                return_value=["/init", "ask", "hello"],
-            ),
-        ):
-            assert _invocation_is_interactive_wsl() is False
-
-    def test_interactive_bash_parent_is_interactive(self):
-        """User typing in a WSL terminal — parent is login bash `-bash` or `/bin/bash`, no -c."""
-        from ask_cli.cli import _invocation_is_interactive_wsl
-
-        with (
-            patch.dict("os.environ", {"WSL_DISTRO_NAME": "Ubuntu"}, clear=True),
-            patch("sys.stdin.isatty", return_value=True),
-            patch("sys.stdout.isatty", return_value=True),
-            patch("ask_cli.cli._parent_cmdline", return_value=["-bash"]),
-        ):
-            assert _invocation_is_interactive_wsl() is True
-
-    def test_non_login_interactive_bash_is_interactive(self):
-        from ask_cli.cli import _invocation_is_interactive_wsl
-
-        with (
-            patch.dict("os.environ", {"WSL_DISTRO_NAME": "Ubuntu"}, clear=True),
-            patch("sys.stdin.isatty", return_value=True),
-            patch("sys.stdout.isatty", return_value=True),
-            patch("ask_cli.cli._parent_cmdline", return_value=["/bin/bash"]),
-        ):
-            assert _invocation_is_interactive_wsl() is True
-
-    def test_wsl_interop_also_counts_as_wsl_marker(self):
-        from ask_cli.cli import _invocation_is_interactive_wsl
-
-        with (
-            patch.dict("os.environ", {"WSL_INTEROP": "/run/WSL/42"}, clear=True),
-            patch("sys.stdin.isatty", return_value=True),
-            patch("sys.stdout.isatty", return_value=True),
-            patch("ask_cli.cli._parent_cmdline", return_value=["-bash"]),
-        ):
-            assert _invocation_is_interactive_wsl() is True
-
-    def test_empty_parent_cmdline_bails_out(self):
-        """If we can't read /proc (shouldn't happen on Linux), be conservative: not interactive."""
-        from ask_cli.cli import _invocation_is_interactive_wsl
-
-        with (
-            patch.dict("os.environ", {"WSL_DISTRO_NAME": "Ubuntu"}, clear=True),
-            patch("sys.stdin.isatty", return_value=True),
-            patch("sys.stdout.isatty", return_value=True),
-            patch("ask_cli.cli._parent_cmdline", return_value=[]),
-        ):
-            assert _invocation_is_interactive_wsl() is False
-
-
-def test_set_default_provider_chmods_config(tmp_path):
-    """--set-default-provider must re-apply chmod 600 after rewriting config.json."""
+def test_set_default_provider_updates_the_real_config_file(capsys):
     import json
 
-    from ask_cli.cli import _handle_set_default_provider
+    from ask_cli.cli import main
+    from ask_cli.config import resolve_paths
 
-    config_path = tmp_path / "config.json"
-    config_path.write_text(json.dumps({"default_provider": "zai"}))
-    config_path.chmod(0o644)  # simulate loose perms
+    assert main(["--set-default-provider", "anthropic"]) == 0
+    saved = json.loads(resolve_paths().config_file.read_text())
+    assert saved["default_provider"] == "anthropic"
+    assert "Default provider set to 'anthropic'" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("argv", "mode"),
+    [
+        (["hello"], "default"),
+        (["--quick", "hello"], "quick"),
+        (["--docker", "--fix", "hello"], "docker+fix"),
+        (["--cmd", "--dry-run", "list"], "cmd"),
+        (["--agent", "--dry-run", "tidy"], "agent"),
+    ],
+)
+def test_stats_record_the_mode_used(argv, mode):
+    from ask_cli.cli import main
 
     with (
-        patch("ask_cli.cli.render_info"),
-        patch("ask_cli.cli.render_error"),
+        patch("ask_cli.cli.load_config", return_value=_make_config()),
+        patch("ask_cli.cli.ConversationHistory"),
+        patch("ask_cli.cli.run_query", return_value="```bash\nls\n```"),
+        patch("ask_cli.cli.run_agent"),
+        patch("ask_cli.cli.record_query") as record_query,
     ):
-        _handle_set_default_provider("anthropic", config_path)
-
-    mode = config_path.stat().st_mode & 0o777
-    assert mode == 0o600
+        assert main(argv) == 0
+    assert record_query.call_args.args[1] == mode

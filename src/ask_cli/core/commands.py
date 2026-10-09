@@ -4,6 +4,7 @@ import re
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Protocol
 
 from ask_cli.core.storage import ensure_private_dir
 from ask_cli.exceptions import StorageError
@@ -171,3 +172,60 @@ def truncate_for_model(output: str, limit: int = MAX_FEEDBACK_CHARS) -> str:
     half = limit // 2
     omitted = len(output) - 2 * half
     return f"{output[:half]}\n[… {omitted} characters truncated …]\n{output[-half:]}"
+
+
+class CommandUI(Protocol):
+    def confirm(self, prompt: str, exact: str | None = None) -> bool: ...
+
+    def info(self, message: str) -> None: ...
+
+    def warning(self, message: str) -> None: ...
+
+
+def handle_generated_command(
+    response: str,
+    *,
+    dry_run: bool,
+    auto_execute: bool,
+    can_prompt: bool,
+    log_path: Path,
+    ui: CommandUI,
+) -> None:
+    """Extract the command from a --cmd response and run it if allowed.
+
+    Non-destructive commands run straight away with --execute; otherwise the user
+    confirms (y/N, or the word "yes" for destructive commands). Without a terminal
+    to ask on, nothing runs.
+    """
+    command = extract_command(response)
+    if command is None:
+        ui.warning("Could not extract a command from the response.")
+        return
+    if dry_run:
+        ui.info("Dry run — command not executed.")
+        return
+
+    destructive = is_destructive(command)
+    if not (auto_execute and not destructive):
+        if not can_prompt:
+            ui.warning(
+                "Not executing: stdin is not a terminal, so confirmation can't be asked. "
+                "The command was printed above; run it yourself."
+            )
+            return
+        if destructive:
+            ui.warning("Destructive command detected — confirmation required.")
+            approved = ui.confirm("Type 'yes' to execute: ", exact="yes")
+        else:
+            approved = ui.confirm("Execute this command? [y/N]: ")
+        if not approved:
+            return
+
+    # The log is an audit trail, not a safety gate: warn rather than block the command
+    try:
+        log_command(command, log_path)
+    except StorageError as error:
+        ui.warning(str(error))
+    exit_code = run_command(command)
+    if exit_code != 0:
+        ui.warning(f"Command exited with code {exit_code}.")
