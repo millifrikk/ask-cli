@@ -2,7 +2,16 @@
 
 
 class AskCLIError(Exception):
-    """Base exception for all ask-cli errors."""
+    """Base exception for all ask-cli errors.
+
+    `hint` is the actionable suggestion shown under the error (PRD §10: problem +
+    cause + suggestion); set it where the error is raised, since that is where the
+    right advice is known.
+    """
+
+    def __init__(self, message: str, *, hint: str | None = None) -> None:
+        super().__init__(message)
+        self.hint = hint
 
 
 class ConfigError(AskCLIError):
@@ -12,8 +21,15 @@ class ConfigError(AskCLIError):
 class ProviderError(AskCLIError):
     """Raised when a provider API call fails."""
 
-    def __init__(self, message: str, provider: str, status_code: int | None = None) -> None:
-        super().__init__(message)
+    def __init__(
+        self,
+        message: str,
+        provider: str,
+        status_code: int | None = None,
+        *,
+        hint: str | None = None,
+    ) -> None:
+        super().__init__(message, hint=hint)
         self.provider = provider
         self.status_code = status_code
 

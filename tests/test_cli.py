@@ -3,8 +3,6 @@
 import sys
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from ask_cli.config import (
     AppConfig,
     DefaultsConfig,
@@ -158,29 +156,20 @@ def test_explain_template_passed_to_run_query():
 def test_config_error_exits_with_code_1():
     from ask_cli.exceptions import ConfigError
 
-    with (
-        patch("ask_cli.cli.load_config", side_effect=ConfigError("bad config")),
-        patch("ask_cli.cli.render_error"),
-        pytest.raises(SystemExit) as exc_info,
-        patch.object(sys, "argv", ["ask", "hello"]),
-    ):
+    with patch("ask_cli.cli.load_config", side_effect=ConfigError("bad config")):
         from ask_cli.cli import main
 
-        main()
-    assert exc_info.value.code == 1
+        assert main(["hello"]) == 1
 
 
 def test_no_query_exits_with_code_0(capsys):
     with (
         patch("ask_cli.cli.load_config", return_value=_make_config()),
         patch("sys.stdin.isatty", return_value=True),
-        pytest.raises(SystemExit) as exc_info,
-        patch.object(sys, "argv", ["ask"]),
     ):
         from ask_cli.cli import main
 
-        main()
-    assert exc_info.value.code == 0
+        assert main([]) == 0
 
 
 def test_file_flag_prepends_to_query(tmp_path):
@@ -208,15 +197,11 @@ def test_file_flag_prepends_to_query(tmp_path):
 def test_missing_file_flag_exits():
     with (
         patch("ask_cli.cli.load_config", return_value=_make_config()),
-        patch("ask_cli.cli.render_error"),
         patch("sys.stdin.isatty", return_value=True),
-        pytest.raises(SystemExit) as exc_info,
-        patch.object(sys, "argv", ["ask", "-f", "/no/such/file.txt", "q"]),
     ):
         from ask_cli.cli import main
 
-        main()
-    assert exc_info.value.code == 1
+        assert main(["-f", "/no/such/file.txt", "q"]) == 1
 
 
 # --- domain mode tests ---
@@ -335,6 +320,69 @@ def test_cmd_injects_system_suffix():
             main()
     call_kwargs = mock_run.call_args[1]
     assert CMD_SYSTEM_SUFFIX in call_kwargs["system_prompt"]
+
+
+# --- error boundary ---
+
+
+def _main_with(argv: list[str], **patches) -> int:
+    from ask_cli.cli import main
+
+    with (
+        patch("ask_cli.cli.load_config", return_value=_make_config()),
+        patch("sys.stdin.isatty", return_value=True),
+        patch("ask_cli.cli.ConversationHistory") as history_class,
+    ):
+        history_class.return_value.messages = []
+        if "history_load" in patches:
+            history_class.return_value.load.side_effect = patches["history_load"]
+        with (
+            patch("ask_cli.cli.run_query", side_effect=patches.get("run_query"), return_value="ok"),
+            patch("ask_cli.cli.run_agent", side_effect=patches.get("run_agent")),
+        ):
+            return main(argv)
+
+
+def test_successful_query_returns_0():
+    assert _main_with(["hello"]) == 0
+
+
+def test_history_error_is_rendered_with_hint_not_traceback(capsys):
+    from ask_cli.exceptions import HistoryError
+
+    error = HistoryError("Conversation history is corrupt.", hint="Run `ask --clear`.")
+    assert _main_with(["-c", "hello"], history_load=error) == 1
+    err = capsys.readouterr().err
+    assert "Error: Conversation history is corrupt." in err
+    assert "Run `ask --clear`." in err
+    assert "Traceback" not in err
+
+
+def test_provider_error_in_agent_mode_is_rendered(capsys):
+    from ask_cli.exceptions import ProviderError
+
+    error = ProviderError("Authentication failed.", provider="anthropic", status_code=401)
+    assert _main_with(["--agent", "do it"], run_agent=error) == 1
+    assert "Authentication failed." in capsys.readouterr().err
+
+
+def test_ctrl_c_returns_130():
+    assert _main_with(["hello"], run_query=KeyboardInterrupt) == 130
+
+
+def test_ctrl_c_during_agent_returns_130():
+    assert _main_with(["--agent", "do it"], run_agent=KeyboardInterrupt) == 130
+
+
+def test_error_hint_from_exception_is_rendered(capsys):
+    from ask_cli.exceptions import TemplateError
+
+    error = TemplateError("Template 'x' not found.", hint="Check the templates directory.")
+    with patch("ask_cli.cli.resolve_system_prompt", side_effect=error):
+        assert _main_with(["--explain", "hello"]) == 1
+    err = capsys.readouterr().err
+    assert "Template 'x' not found." in err
+    assert "Check the templates directory." in err
 
 
 # --- json mode ---

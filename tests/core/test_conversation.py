@@ -95,7 +95,7 @@ def test_run_query_prepends_history_messages(tmp_path):
 
 
 def test_keyboard_interrupt_saves_partial_response(tmp_path):
-    """Ctrl+C mid-stream should save partial response with [interrupted] suffix."""
+    """Ctrl+C mid-stream saves the partial response, then propagates for exit code 130."""
     history = _make_history(tmp_path)
 
     provider = MagicMock()
@@ -106,18 +106,17 @@ def test_keyboard_interrupt_saves_partial_response(tmp_path):
 
     provider.stream.side_effect = _raise_after_first
 
-    result = run_query(
-        query="test",
-        provider=provider,
-        model="model",
-        max_tokens=100,
-        system_prompt=None,
-        history=history,
-        use_history=True,
-        on_chunk=lambda chunk: None,
-    )
-
-    assert result == "partial"
+    with pytest.raises(KeyboardInterrupt):
+        run_query(
+            query="test",
+            provider=provider,
+            model="model",
+            max_tokens=100,
+            system_prompt=None,
+            history=history,
+            use_history=True,
+            on_chunk=lambda chunk: None,
+        )
     # Partial response should be in history with [interrupted] suffix
     assert len(history.messages) == 2
     assert "[interrupted]" in history.messages[1]["content"]

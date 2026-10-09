@@ -19,7 +19,8 @@ def run_query(
     think: bool | None = None,
 ) -> str:
     """Stream a query through the provider, passing each chunk to on_chunk, and return
-    the full response text. Ctrl+C stops the stream and keeps the partial response."""
+    the full response text. On Ctrl+C the partial response is saved to history and the
+    KeyboardInterrupt is re-raised so the CLI can exit with 130."""
     messages = (history.messages if use_history else []) + [{"role": "user", "content": query}]
 
     accumulated: list[str] = []
@@ -39,4 +40,6 @@ def run_query(
         history.add_assistant_message(full_response + suffix)
         history.save()
 
+    if interrupted:
+        raise KeyboardInterrupt
     return full_response

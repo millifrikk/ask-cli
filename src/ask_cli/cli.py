@@ -1,5 +1,6 @@
 """Argument parsing and entry point for ask-cli."""
 
+import argparse
 import json
 import os
 import sys
@@ -30,12 +31,10 @@ from ask_cli.core.saved import delete_saved, list_saved, recall_response, save_r
 from ask_cli.core.stats import load_stats, record_query, reset_stats
 from ask_cli.core.templates import JSON_SYSTEM_SUFFIX, resolve_system_prompt
 from ask_cli.exceptions import (
-    AgentError,
-    AttachmentError,
+    AskCLIError,
     ConfigError,
     ProviderError,
     SavedResponseError,
-    TemplateError,
 )
 from ask_cli.output import (
     ResponseDisplay,
@@ -128,15 +127,16 @@ def _select_base_system_prompt(defaults: DefaultsConfig) -> str:
 
 def _build_provider(name: str, config: AppConfig) -> BaseProvider:
     if name not in PROVIDER_CLASSES:
-        render_error(
+        raise ConfigError(
             f"Unknown provider '{name}'.",
             hint=f"Available providers: {', '.join(PROVIDER_CLASSES)}",
         )
-        sys.exit(1)
     provider_config = config.providers.get(name)
     if provider_config is None:
-        render_error(f"No configuration found for provider '{name}'.")
-        sys.exit(1)
+        raise ConfigError(
+            f"No configuration found for provider '{name}'.",
+            hint=f"Add a providers.{name} section to your config file.",
+        )
     return PROVIDER_CLASSES[name](provider_config)
 
 
@@ -156,8 +156,10 @@ def _handle_list_providers(config: AppConfig) -> None:
 def _handle_list_models(provider_name: str, config: AppConfig) -> None:
     provider_config = config.providers.get(provider_name)
     if provider_config is None:
-        render_error(f"No configuration found for provider '{provider_name}'.")
-        sys.exit(1)
+        raise ConfigError(
+            f"No configuration found for provider '{provider_name}'.",
+            hint=f"Available providers: {', '.join(PROVIDER_CLASSES)}",
+        )
     models = {
         "default": provider_config.default_model,
         "fast": provider_config.fast_model,
@@ -168,20 +170,18 @@ def _handle_list_models(provider_name: str, config: AppConfig) -> None:
 
 def _handle_set_default_provider(provider_name: str, config_path: Path) -> None:
     if provider_name not in PROVIDER_CLASSES:
-        render_error(
+        raise ConfigError(
             f"Unknown provider '{provider_name}'.",
             hint=f"Available providers: {', '.join(PROVIDER_CLASSES)}",
         )
-        sys.exit(1)
     try:
         raw = json.loads(config_path.read_text()) if config_path.exists() else {}
         raw["default_provider"] = provider_name
         config_path.write_text(json.dumps(raw, indent=2))
         config_path.chmod(0o600)
-        render_info(f"Default provider set to '{provider_name}'.")
     except (OSError, json.JSONDecodeError) as e:
-        render_error(f"Failed to update config: {e}")
-        sys.exit(1)
+        raise ConfigError(f"Failed to update config {config_path}: {e}") from e
+    render_info(f"Default provider set to '{provider_name}'.")
 
 
 def _determine_output_mode(args) -> str:
@@ -209,9 +209,7 @@ def _determine_template(args) -> str | None:
     return None
 
 
-def main() -> None:
-    import argparse
-
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ask",
         description="Terminal AI assistant",
@@ -361,70 +359,87 @@ def main() -> None:
         "--set-default-provider", metavar="PROVIDER", help="Set the default provider"
     )
 
-    args = parser.parse_args()
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
 
     if args.no_color:
         disable_color()
 
-    paths = resolve_paths()
+    # The single error boundary: business logic raises typed errors carrying an
+    # actionable hint; nothing below this point prints a traceback or exits.
     try:
-        config = load_config(paths)
-    except ConfigError as e:
-        render_error(str(e), hint="Fix or delete ~/.config/ask/config.json to reset.")
-        sys.exit(1)
+        return _run(args, parser)
+    except ProviderError as error:
+        render_error(str(error), hint=error.hint or _provider_hint(error))
+        return 1
+    except AskCLIError as error:
+        render_error(str(error), hint=error.hint)
+        return 1
+    except KeyboardInterrupt:
+        render_info("Interrupted.")
+        return 130
+
+
+def _provider_hint(error: ProviderError) -> str | None:
+    if error.status_code == 401:
+        return f"Set ASK_{error.provider.upper()}_API_KEY or add api_key to config."
+    if error.status_code == 429:
+        return "Wait a moment and try again, or switch to a different provider."
+    return None
+
+
+def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    paths = resolve_paths()
+    config = load_config(paths)
 
     # Management commands — dispatch and exit
     if args.clear:
         history = ConversationHistory(paths.history_file, config.defaults.history_ttl_hours)
         history.clear()
         render_info("Conversation history cleared.")
-        return
+        return 0
 
     if args.list_providers:
         _handle_list_providers(config)
-        return
+        return 0
 
     provider_name = args.provider or config.default_provider
 
     if args.list_models:
         _handle_list_models(provider_name, config)
-        return
+        return 0
 
     if args.set_default_provider:
         _handle_set_default_provider(args.set_default_provider, paths.config_file)
-        return
+        return 0
 
     # Save & recall management — dispatch and exit
     if args.list_saved:
         render_saved_list(list_saved(paths.saved_dir))
-        return
+        return 0
 
     if args.delete_saved:
-        try:
-            delete_saved(args.delete_saved, paths.saved_dir)
-            render_info(f"Deleted saved response '{args.delete_saved}'.")
-        except SavedResponseError as e:
-            render_error(str(e))
-            sys.exit(1)
-        return
+        delete_saved(args.delete_saved, paths.saved_dir)
+        render_info(f"Deleted saved response '{args.delete_saved}'.")
+        return 0
 
     if args.recall:
-        try:
-            entry = recall_response(args.recall, paths.saved_dir)
-            render_markdown(entry["response"])
-        except SavedResponseError as e:
-            render_error(str(e))
-            sys.exit(1)
-        return
+        entry = recall_response(args.recall, paths.saved_dir)
+        render_markdown(entry["response"])
+        return 0
 
     if args.stats:
         render_stats(load_stats(paths.stats_file))
-        return
+        return 0
 
     if args.stats_reset:
         reset_stats(paths.stats_file)
         render_info("Statistics reset.")
-        return
+        return 0
 
     # Build the query from positional args and/or piped stdin
     query_parts = list(args.query)
@@ -436,18 +451,14 @@ def main() -> None:
 
     if not query:
         parser.print_help()
-        sys.exit(0)
+        return 0
 
     if args.file or args.files:
-        try:
-            file_context = read_attachments(
-                args.file or [],
-                args.files or [],
-                max_file_size=args.max_file_size * 1024,
-            )
-        except AttachmentError as e:
-            render_error(str(e))
-            sys.exit(1)
+        file_context = read_attachments(
+            args.file or [],
+            args.files or [],
+            max_file_size=args.max_file_size * 1024,
+        )
         if file_context:
             query = f"{file_context}\n\n{query}"
 
@@ -464,13 +475,9 @@ def main() -> None:
     max_tokens = config.defaults.quick_max_tokens if args.quick else config.defaults.max_tokens
 
     template = _determine_template(args)
-    try:
-        system_prompt = resolve_system_prompt(
-            template, args.quick, paths.templates_dir, _select_base_system_prompt(config.defaults)
-        )
-    except TemplateError as e:
-        render_error(str(e))
-        sys.exit(1)
+    system_prompt = resolve_system_prompt(
+        template, args.quick, paths.templates_dir, _select_base_system_prompt(config.defaults)
+    )
 
     # Inject command-generation suffix when in cmd mode
     cmd_mode = args.cmd or args.dry_run
@@ -485,21 +492,17 @@ def main() -> None:
 
     # --agent: run the multi-step agent loop and return
     if args.agent:
-        try:
-            run_agent(
-                goal=query,
-                provider=provider,
-                model=model,
-                max_tokens=max_tokens,
-                base_system_prompt=system_prompt,
-                max_steps=args.agent_max_steps,
-                auto_approve=args.auto_approve,
-                log_path=paths.commands_log,
-            )
-        except AgentError as e:
-            render_error(str(e))
-            sys.exit(1)
-        return
+        run_agent(
+            goal=query,
+            provider=provider,
+            model=model,
+            max_tokens=max_tokens,
+            base_system_prompt=system_prompt,
+            max_steps=args.agent_max_steps,
+            auto_approve=args.auto_approve,
+            log_path=paths.commands_log,
+        )
+        return 0
 
     history = ConversationHistory(paths.history_file, config.defaults.history_ttl_hours)
     use_history = args.continue_session
@@ -514,29 +517,20 @@ def main() -> None:
             f"{system_prompt}\n\n{JSON_SYSTEM_SUFFIX}" if system_prompt else JSON_SYSTEM_SUFFIX
         )
 
-    try:
-        with ResponseDisplay(output_mode) as display:
-            response = run_query(
-                query=query,
-                provider=provider,
-                model=model,
-                max_tokens=max_tokens,
-                system_prompt=system_prompt,
-                history=history,
-                use_history=use_history,
-                on_chunk=display.update,
-                # --quick disables reasoning tokens on models that support it (Qwen3.5
-                # via Ollama, etc.) so the token budget doesn't get eaten by thinking.
-                think=False if args.quick else None,
-            )
-    except ProviderError as e:
-        hint = None
-        if e.status_code == 401:
-            hint = f"Set ASK_{provider_name.upper()}_API_KEY or add api_key to config."
-        elif e.status_code == 429:
-            hint = "Wait a moment and try again, or switch to a different provider."
-        render_error(str(e), hint=hint)
-        sys.exit(1)
+    with ResponseDisplay(output_mode) as display:
+        response = run_query(
+            query=query,
+            provider=provider,
+            model=model,
+            max_tokens=max_tokens,
+            system_prompt=system_prompt,
+            history=history,
+            use_history=use_history,
+            on_chunk=display.update,
+            # --quick disables reasoning tokens on models that support it (Qwen3.5
+            # via Ollama, etc.) so the token budget doesn't get eaten by thinking.
+            think=False if args.quick else None,
+        )
 
     if output_mode == "json" and response and not is_json_response(response):
         render_warning("The model's response is not valid JSON.")
@@ -587,3 +581,5 @@ def main() -> None:
     # Record usage stats after a successful query
     if response:
         record_query(paths.stats_file, template or "default", len(query), len(response))
+
+    return 0
