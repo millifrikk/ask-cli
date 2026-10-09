@@ -630,9 +630,9 @@ def _run(args: argparse.Namespace) -> int:
         system_prompt = (
             f"{system_prompt}\n\n{CMD_SYSTEM_SUFFIX}" if system_prompt else CMD_SYSTEM_SUFFIX
         )
-        # --cmd generates a single shell command — auto-copy it so the user
-        # can paste directly without clicking around the terminal.
-        if not args.copy_code:
+        # --cmd generates a single shell command — auto-copy it (unless disabled in config
+        # or the user asked to copy the whole response) so it can be pasted directly.
+        if config.features.clipboard and not args.copy:
             args.copy_code = True
 
     # --agent: run the multi-step agent loop and return

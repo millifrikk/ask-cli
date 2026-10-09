@@ -643,6 +643,42 @@ def test_confirmed_command_failure_is_reported(capsys):
     assert "exited with code 2" in capsys.readouterr().err
 
 
+# --- clipboard behaviour ---
+
+
+def _run_cmd_mode(argv: list[str], clipboard_enabled: bool = True) -> None:
+    from ask_cli.cli import main
+
+    config = _make_config()
+    config.features.clipboard = clipboard_enabled
+    with (
+        patch("ask_cli.cli.load_config", return_value=config),
+        patch("ask_cli.cli.ConversationHistory"),
+        patch("ask_cli.cli.run_query", return_value="Use:\n```bash\nls -la\n```"),
+    ):
+        assert main(argv) == 0
+
+
+def test_cmd_auto_copies_the_command(fake_clipboard):
+    _run_cmd_mode(["--cmd", "--dry-run", "list files"])
+    assert fake_clipboard == ["ls -la"]
+
+
+def test_cmd_auto_copy_respects_clipboard_setting(fake_clipboard):
+    _run_cmd_mode(["--cmd", "--dry-run", "list files"], clipboard_enabled=False)
+    assert fake_clipboard == []
+
+
+def test_explicit_copy_code_overrides_clipboard_setting(fake_clipboard):
+    _run_cmd_mode(["--cmd", "--dry-run", "--copy-code", "list files"], clipboard_enabled=False)
+    assert fake_clipboard == ["ls -la"]
+
+
+def test_cmd_with_copy_copies_once(fake_clipboard):
+    _run_cmd_mode(["--cmd", "--dry-run", "--copy", "list files"])
+    assert len(fake_clipboard) == 1
+
+
 # --- --save ---
 
 
