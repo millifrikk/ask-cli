@@ -209,13 +209,13 @@ def render_provider_table(rows: list[tuple[str, str, str]]) -> None:
     console.print(table)
 
 
-def render_model_list(provider: str, models: dict[str, str], default: str) -> None:
-    """Render a provider's available models (default, fast, smart)."""
+def render_model_list(provider: str, models: dict[str, str]) -> None:
+    """Render a provider's model tiers (default, fast, smart), starring the default tier."""
     table = Table(title=f"Models for {provider}", show_header=True, header_style="bold")
     table.add_column("Tier", style="cyan")
     table.add_column("Model")
     for tier, model in models.items():
-        marker = " [bold green]*[/bold green]" if model == default else ""
+        marker = " [bold green]*[/bold green]" if tier == "default" else ""
         table.add_row(tier, f"{model}{marker}")
     console.print(table)
 

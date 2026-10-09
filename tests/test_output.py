@@ -213,3 +213,10 @@ class TestDisableColor:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+def test_list_models_marks_only_the_default_tier(capsys):
+    output.render_model_list("zai", {"default": "glm", "fast": "glm", "smart": "glm-big"})
+    lines = [line for line in capsys.readouterr().out.splitlines() if "*" in line]
+    assert len(lines) == 1
+    assert "default" in lines[0]

@@ -163,7 +163,7 @@ def _handle_list_models(provider_name: str, config: AppConfig) -> None:
         "fast": provider_config.fast_model,
         "smart": provider_config.smart_model,
     }
-    render_model_list(provider_name, models, provider_config.default_model)
+    render_model_list(provider_name, models)
 
 
 def _handle_set_default_provider(provider_name: str, config_path: Path) -> None:
