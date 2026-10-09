@@ -1,10 +1,14 @@
 """Built-in templates and system prompt resolution for ask-cli."""
 
+import re
+from collections.abc import Sequence
 from pathlib import Path
 
 import yaml
 
 from ask_cli.exceptions import TemplateError
+
+_TEMPLATE_NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*")
 
 QUICK_SUFFIX = (
     "Give the shortest possible answer. "
@@ -79,14 +83,14 @@ BUILTIN_TEMPLATES: dict[str, str] = {
 
 
 def resolve_system_prompt(
-    template: str | None,
+    templates: Sequence[str],
     quick: bool,
     user_templates_dir: Path,
     default_system_prompt: str = "",
 ) -> str | None:
-    """Resolve the system prompt from all active sources, joined with blank lines.
+    """Compose the system prompt: base → each template in order → quick suffix.
 
-    Priority order (all compose, not override): default → template → quick suffix.
+    Template names are built-ins or user YAML files in user_templates_dir.
     Returns None if nothing is active.
     """
     parts: list[str] = []
@@ -94,11 +98,11 @@ def resolve_system_prompt(
     if default_system_prompt:
         parts.append(default_system_prompt)
 
-    if template is not None:
-        if template in BUILTIN_TEMPLATES:
-            parts.append(BUILTIN_TEMPLATES[template])
+    for name in templates:
+        if name in BUILTIN_TEMPLATES:
+            parts.append(BUILTIN_TEMPLATES[name])
         else:
-            parts.append(_load_user_template(template, user_templates_dir))
+            parts.append(_load_user_template(name, user_templates_dir))
 
     if quick:
         parts.append(QUICK_SUFFIX)
@@ -107,25 +111,32 @@ def resolve_system_prompt(
 
 
 def _load_user_template(name: str, templates_dir: Path) -> str:
-    """Load a user-defined template from a YAML file."""
+    """Load a user-defined template from templates_dir/<name>.yaml."""
+    # The name becomes a file name: allow nothing that could leave templates_dir
+    if not _TEMPLATE_NAME_RE.fullmatch(name):
+        raise TemplateError(
+            f"Invalid template name '{name}'.",
+            hint="Use letters, digits, '-' and '_' only (the file is <name>.yaml).",
+        )
     template_path = templates_dir / f"{name}.yaml"
     if not template_path.exists():
         raise TemplateError(
-            f"Template '{name}' not found. "
-            f"Built-in templates: {', '.join(BUILTIN_TEMPLATES)}. "
-            f"User templates should be placed in {templates_dir}/<name>.yaml"
+            f"Template '{name}' not found.",
+            hint=f"Built-in templates: {', '.join(BUILTIN_TEMPLATES)}. "
+            f"For your own, create {template_path} with a 'prompt:' field.",
         )
 
     try:
-        data = yaml.safe_load(template_path.read_text())
+        data = yaml.safe_load(template_path.read_text(encoding="utf-8"))
     except yaml.YAMLError as e:
         raise TemplateError(f"Failed to parse template '{name}': {e}") from e
-    except OSError as e:
+    except (OSError, UnicodeDecodeError) as e:
         raise TemplateError(f"Failed to read template '{name}': {e}") from e
 
-    if not isinstance(data, dict) or "prompt" not in data:
+    prompt = data.get("prompt") if isinstance(data, dict) else None
+    if not isinstance(prompt, str) or not prompt.strip():
         raise TemplateError(
-            f"Template '{name}' must be a YAML file with at least a 'prompt' field."
+            f"Template '{name}' needs a non-empty text 'prompt' field.",
+            hint=f"Edit {template_path}, e.g. prompt: You are a careful code reviewer.",
         )
-
-    return str(data["prompt"])
+    return prompt

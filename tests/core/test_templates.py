@@ -14,40 +14,40 @@ def user_templates_dir(tmp_path) -> Path:
 
 
 def test_no_template_no_quick_returns_none(user_templates_dir):
-    result = resolve_system_prompt(None, quick=False, user_templates_dir=user_templates_dir)
+    result = resolve_system_prompt([], quick=False, user_templates_dir=user_templates_dir)
     assert result is None
 
 
 def test_quick_only_returns_quick_suffix(user_templates_dir):
-    result = resolve_system_prompt(None, quick=True, user_templates_dir=user_templates_dir)
+    result = resolve_system_prompt([], quick=True, user_templates_dir=user_templates_dir)
     assert result == QUICK_SUFFIX
 
 
 def test_builtin_explain(user_templates_dir):
-    result = resolve_system_prompt("explain", quick=False, user_templates_dir=user_templates_dir)
+    result = resolve_system_prompt(["explain"], quick=False, user_templates_dir=user_templates_dir)
     assert result == BUILTIN_TEMPLATES["explain"]
     assert "explain" in result.lower() or "explainer" in result.lower()
 
 
 def test_builtin_fix(user_templates_dir):
-    result = resolve_system_prompt("fix", quick=False, user_templates_dir=user_templates_dir)
+    result = resolve_system_prompt(["fix"], quick=False, user_templates_dir=user_templates_dir)
     assert result == BUILTIN_TEMPLATES["fix"]
 
 
 def test_builtin_optimize(user_templates_dir):
-    result = resolve_system_prompt("optimize", quick=False, user_templates_dir=user_templates_dir)
+    result = resolve_system_prompt(["optimize"], quick=False, user_templates_dir=user_templates_dir)
     assert result == BUILTIN_TEMPLATES["optimize"]
 
 
 def test_template_plus_quick_composes(user_templates_dir):
-    result = resolve_system_prompt("explain", quick=True, user_templates_dir=user_templates_dir)
+    result = resolve_system_prompt(["explain"], quick=True, user_templates_dir=user_templates_dir)
     assert BUILTIN_TEMPLATES["explain"] in result
     assert QUICK_SUFFIX in result
 
 
 def test_unknown_template_raises_template_error(user_templates_dir):
     with pytest.raises(TemplateError, match="not found"):
-        resolve_system_prompt("nonexistent", quick=False, user_templates_dir=user_templates_dir)
+        resolve_system_prompt(["nonexistent"], quick=False, user_templates_dir=user_templates_dir)
 
 
 def test_user_yaml_template_loaded(user_templates_dir):
@@ -55,7 +55,7 @@ def test_user_yaml_template_loaded(user_templates_dir):
     template_file = user_templates_dir / "mytmpl.yaml"
     template_file.write_text("name: mytmpl\ndescription: test\nprompt: Custom prompt here.\n")
 
-    result = resolve_system_prompt("mytmpl", quick=False, user_templates_dir=user_templates_dir)
+    result = resolve_system_prompt(["mytmpl"], quick=False, user_templates_dir=user_templates_dir)
     assert result == "Custom prompt here."
 
 
@@ -65,7 +65,7 @@ def test_user_yaml_missing_prompt_raises(user_templates_dir):
     template_file.write_text("name: bad\ndescription: no prompt field\n")
 
     with pytest.raises(TemplateError, match="prompt"):
-        resolve_system_prompt("bad", quick=False, user_templates_dir=user_templates_dir)
+        resolve_system_prompt(["bad"], quick=False, user_templates_dir=user_templates_dir)
 
 
 def test_user_yaml_invalid_yaml_raises(user_templates_dir):
@@ -74,38 +74,38 @@ def test_user_yaml_invalid_yaml_raises(user_templates_dir):
     template_file.write_text("{\nnot: valid: yaml: at: all\n")
 
     with pytest.raises(TemplateError):
-        resolve_system_prompt("broken", quick=False, user_templates_dir=user_templates_dir)
+        resolve_system_prompt(["broken"], quick=False, user_templates_dir=user_templates_dir)
 
 
 # --- default_system_prompt composition tests ---
 
 
 def test_default_system_prompt_alone(user_templates_dir):
-    result = resolve_system_prompt(None, False, user_templates_dir, "Be concise.")
+    result = resolve_system_prompt([], False, user_templates_dir, "Be concise.")
     assert result == "Be concise."
 
 
 def test_no_args_with_empty_default_returns_none(user_templates_dir):
-    result = resolve_system_prompt(None, False, user_templates_dir, "")
+    result = resolve_system_prompt([], False, user_templates_dir, "")
     assert result is None
 
 
 def test_default_plus_template_composes(user_templates_dir):
-    result = resolve_system_prompt("explain", False, user_templates_dir, "Linux user.")
+    result = resolve_system_prompt(["explain"], False, user_templates_dir, "Linux user.")
     assert result is not None
     assert result.startswith("Linux user.")
     assert BUILTIN_TEMPLATES["explain"] in result
 
 
 def test_default_plus_quick_composes(user_templates_dir):
-    result = resolve_system_prompt(None, True, user_templates_dir, "Linux user.")
+    result = resolve_system_prompt([], True, user_templates_dir, "Linux user.")
     assert result is not None
     assert "Linux user." in result
     assert QUICK_SUFFIX in result
 
 
 def test_all_three_compose(user_templates_dir):
-    result = resolve_system_prompt("fix", True, user_templates_dir, "Linux user.")
+    result = resolve_system_prompt(["fix"], True, user_templates_dir, "Linux user.")
     assert result is not None
     assert "Linux user." in result
     assert BUILTIN_TEMPLATES["fix"] in result
@@ -113,7 +113,7 @@ def test_all_three_compose(user_templates_dir):
 
 
 def test_parts_joined_with_blank_line(user_templates_dir):
-    result = resolve_system_prompt(None, True, user_templates_dir, "Context.")
+    result = resolve_system_prompt([], True, user_templates_dir, "Context.")
     assert result == f"Context.\n\n{QUICK_SUFFIX}"
 
 
@@ -121,19 +121,46 @@ def test_parts_joined_with_blank_line(user_templates_dir):
 
 
 def test_domain_sap_resolves(user_templates_dir):
-    result = resolve_system_prompt("sap", quick=False, user_templates_dir=user_templates_dir)
+    result = resolve_system_prompt(["sap"], quick=False, user_templates_dir=user_templates_dir)
     assert result is not None
     assert "SAP" in result
 
 
 def test_domain_docker_resolves(user_templates_dir):
-    result = resolve_system_prompt("docker", quick=False, user_templates_dir=user_templates_dir)
+    result = resolve_system_prompt(["docker"], quick=False, user_templates_dir=user_templates_dir)
     assert result is not None
     assert "Docker" in result
 
 
 def test_domain_composes_with_quick(user_templates_dir):
-    result = resolve_system_prompt("docker", quick=True, user_templates_dir=user_templates_dir)
+    result = resolve_system_prompt(["docker"], quick=True, user_templates_dir=user_templates_dir)
     assert result is not None
     assert BUILTIN_TEMPLATES["docker"] in result
     assert QUICK_SUFFIX in result
+
+
+def test_domain_and_task_templates_compose_in_order(user_templates_dir):
+    result = resolve_system_prompt(
+        ["docker", "fix"], quick=False, user_templates_dir=user_templates_dir
+    )
+    assert result == f"{BUILTIN_TEMPLATES['docker']}\n\n{BUILTIN_TEMPLATES['fix']}"
+
+
+@pytest.mark.parametrize("name", ["../secrets", "a/b", ".hidden", "", "x y"])
+def test_user_template_names_cannot_escape_the_templates_dir(user_templates_dir, name):
+    with pytest.raises(TemplateError, match="Invalid template name"):
+        resolve_system_prompt([name], quick=False, user_templates_dir=user_templates_dir)
+
+
+@pytest.mark.parametrize("body", ["prompt:\n", "prompt: 42\n", "prompt: ''\n"])
+def test_user_template_prompt_must_be_non_empty_text(user_templates_dir, body):
+    user_templates_dir.mkdir(parents=True)
+    (user_templates_dir / "bad.yaml").write_text(body)
+    with pytest.raises(TemplateError, match="prompt"):
+        resolve_system_prompt(["bad"], quick=False, user_templates_dir=user_templates_dir)
+
+
+def test_missing_user_template_hint_names_the_directory(user_templates_dir):
+    with pytest.raises(TemplateError) as exc_info:
+        resolve_system_prompt(["mine"], quick=False, user_templates_dir=user_templates_dir)
+    assert str(user_templates_dir / "mine.yaml") in exc_info.value.hint

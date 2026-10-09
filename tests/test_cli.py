@@ -3,6 +3,8 @@
 import sys
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from ask_cli.config import (
     AppConfig,
     DefaultsConfig,
@@ -662,6 +664,82 @@ def test_save_failure_after_answer_exits_1(capsys):
     with patch("ask_cli.cli.save_response", side_effect=SavedResponseError("disk full")):
         assert _main_with(["--save", "notes", "question"]) == 1
     assert "disk full" in capsys.readouterr().err
+
+
+# --- flag semantics ---
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["--fast", "--smart", "q"],
+        ["-m", "some-model", "--fast", "q"],
+        ["--raw", "--json", "q"],
+        ["--markdown", "--code-only", "q"],
+        ["--explain", "--fix", "q"],
+        ["--sql", "--docker", "q"],
+        ["--stats", "--list-saved"],
+        ["--clear", "a new question"],
+        ["--stats", "q"],
+        ["--auto-approve", "q"],
+        ["--agent-max-steps", "3", "q"],
+        ["--agent", "--save", "n", "q"],
+        ["--agent", "-c", "q"],
+        ["--agent", "--copy", "q"],
+        ["--agent", "--cmd", "q"],
+        ["--execute", "--dry-run", "q"],
+        ["--agent", "--agent-max-steps", "0", "q"],
+        ["--max-file-size", "0", "q"],
+        ["--max-file-size", "-5", "q"],
+        ["-p", "bogus", "q"],
+        ["--set-default-provider", "bogus"],
+    ],
+)
+def test_conflicting_or_invalid_flags_are_usage_errors(argv, capsys):
+    from ask_cli.cli import main
+
+    with patch("ask_cli.cli.load_config", return_value=_make_config()) as load:
+        with pytest.raises(SystemExit) as exc_info:
+            main(argv)
+        load.assert_not_called()
+    assert exc_info.value.code == 2
+    assert "error:" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [["--list-models", "-p", "zai"], ["--agent", "--dry-run", "q"], ["--fast", "--quick", "q"]],
+)
+def test_compatible_flags_are_accepted(argv):
+    from ask_cli.cli import parse_args
+
+    parse_args(argv)
+
+
+def test_execute_implies_cmd_mode():
+    from ask_cli.core.commands import CMD_SYSTEM_SUFFIX
+
+    mock_run = _run_with_response(["--execute", "list files"], "no command here")
+    assert CMD_SYSTEM_SUFFIX in mock_run.call_args[1]["system_prompt"]
+
+
+def test_domain_and_task_flags_compose():
+    from ask_cli.core.templates import BUILTIN_TEMPLATES
+
+    mock_run = _run_with_response(["--docker", "--fix", "my container exits"], "ok")
+    prompt = mock_run.call_args[1]["system_prompt"]
+    assert BUILTIN_TEMPLATES["docker"] in prompt
+    assert BUILTIN_TEMPLATES["fix"] in prompt
+
+
+def test_template_flag_uses_user_yaml():
+    from ask_cli.config import resolve_paths
+
+    templates_dir = resolve_paths().templates_dir
+    templates_dir.mkdir(parents=True)
+    (templates_dir / "reviewer.yaml").write_text("prompt: Review like a grumpy senior.\n")
+    mock_run = _run_with_response(["--template", "reviewer", "check this"], "ok")
+    assert "Review like a grumpy senior." in mock_run.call_args[1]["system_prompt"]
 
 
 # --- json mode ---

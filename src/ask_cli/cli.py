@@ -242,9 +242,28 @@ def _handle_set_default_provider(provider_name: str, config_path: Path) -> None:
     render_info(f"Default provider set to '{provider_name}'.")
 
 
-def _determine_output_mode(args) -> str:
-    if args.markdown:
-        return "markdown"
+TASK_FLAGS = ("explain", "fix", "optimize")
+
+DEFAULT_AGENT_MAX_STEPS = 10
+
+# Flags that perform a one-off action and exit; at most one per run, and no question.
+MANAGEMENT_FLAGS = (
+    "clear",
+    "list_providers",
+    "list_models",
+    "set_default_provider",
+    "list_saved",
+    "delete_saved",
+    "recall",
+    "stats",
+    "stats_reset",
+)
+
+# Flags that only make sense for a normal answer, not for --agent.
+NOT_WITH_AGENT = ("save", "continue_session", "copy", "copy_code", "cmd", "execute")
+
+
+def _determine_output_mode(args: argparse.Namespace) -> str:
     if args.raw:
         return "raw"
     if args.code_only:
@@ -254,17 +273,26 @@ def _determine_output_mode(args) -> str:
     return "markdown"
 
 
-def _determine_template(args) -> str | None:
-    for name in DOMAIN_FLAGS:
-        if getattr(args, name, False):
-            return name
-    if args.explain:
-        return "explain"
-    if args.fix:
-        return "fix"
-    if args.optimize:
-        return "optimize"
-    return None
+def _determine_templates(args: argparse.Namespace) -> list[str]:
+    # Domain first, then the task, then a user template: each refines the previous one
+    names = [name for name in (*DOMAIN_FLAGS, *TASK_FLAGS) if getattr(args, name)]
+    if args.template:
+        names.append(args.template)
+    return names
+
+
+def _positive_int(text: str) -> int:
+    try:
+        value = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"'{text}' is not a whole number") from None
+    if value <= 0:
+        raise argparse.ArgumentTypeError(f"must be at least 1, got {value}")
+    return value
+
+
+def _flag_name(dest: str) -> str:
+    return "-c/--continue" if dest == "continue_session" else f"--{dest.replace('_', '-')}"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -279,10 +307,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     # Provider selection
     provider_group = parser.add_argument_group("provider")
-    provider_group.add_argument("-p", "--provider", help="Provider to use")
-    provider_group.add_argument("-m", "--model", help="Explicit model name")
-    provider_group.add_argument("--fast", action="store_true", help="Use the fast model tier")
-    provider_group.add_argument("--smart", action="store_true", help="Use the smart model tier")
+    provider_group.add_argument(
+        "-p", "--provider", choices=PROVIDER_CLASSES, metavar="PROVIDER", help="Provider to use"
+    )
+    tier = provider_group.add_mutually_exclusive_group()
+    tier.add_argument("-m", "--model", help="Explicit model name")
+    tier.add_argument("--fast", action="store_true", help="Use the fast model tier")
+    tier.add_argument("--smart", action="store_true", help="Use the smart model tier")
 
     # History
     history_group = parser.add_argument_group("history")
@@ -299,16 +330,21 @@ def build_parser() -> argparse.ArgumentParser:
 
     # Output formatting
     fmt_group = parser.add_argument_group("output")
-    fmt_group.add_argument("--markdown", action="store_true", help="Render output as markdown")
-    fmt_group.add_argument("--raw", action="store_true", help="Print raw output with no formatting")
-    fmt_group.add_argument(
+    output_mode = fmt_group.add_mutually_exclusive_group()
+    output_mode.add_argument(
+        "--markdown", action="store_true", help="Render output as markdown (default)"
+    )
+    output_mode.add_argument(
+        "--raw", action="store_true", help="Print raw output with no formatting"
+    )
+    output_mode.add_argument(
         "--code-only", action="store_true", help="Extract and display only code blocks"
     )
-    fmt_group.add_argument(
-        "--json", action="store_true", help="Output raw JSON (model must produce it)"
+    output_mode.add_argument(
+        "--json", action="store_true", help="Ask the model for JSON and print only that"
     )
     fmt_group.add_argument(
-        "--quick", action="store_true", help="Terse one-liner response (1024 tokens)"
+        "--quick", action="store_true", help="Terse one-liner response (small token budget)"
     )
     fmt_group.add_argument(
         "--no-color", action="store_true", help="Disable color and rich formatting"
@@ -334,24 +370,29 @@ def build_parser() -> argparse.ArgumentParser:
     )
     attach_group.add_argument(
         "--max-file-size",
-        type=int,
+        type=_positive_int,
         default=100,
         metavar="KB",
         help="Max size per file in KB (default: 100)",
     )
 
-    # Templates
-    tmpl_group = parser.add_argument_group("templates")
-    tmpl_group.add_argument("--explain", action="store_true", help="Use the explain template")
-    tmpl_group.add_argument("--fix", action="store_true", help="Use the fix template")
-    tmpl_group.add_argument("--optimize", action="store_true", help="Use the optimize template")
+    # Templates: one task template, one domain, and/or one user template — they compose
+    tmpl_group = parser.add_argument_group("templates (combine with a domain mode)")
+    task = tmpl_group.add_mutually_exclusive_group()
+    task.add_argument("--explain", action="store_true", help="Use the explain template")
+    task.add_argument("--fix", action="store_true", help="Use the fix template")
+    task.add_argument("--optimize", action="store_true", help="Use the optimize template")
+    tmpl_group.add_argument(
+        "--template",
+        metavar="NAME",
+        help="Use your own template from the templates directory (NAME.yaml)",
+    )
 
     # Domain modes
     domain_group = parser.add_argument_group("domain modes")
+    domain = domain_group.add_mutually_exclusive_group()
     for _flag in DOMAIN_FLAGS:
-        domain_group.add_argument(
-            f"--{_flag}", action="store_true", help=f"{_flag.upper()} expert mode"
-        )
+        domain.add_argument(f"--{_flag}", action="store_true", help=f"{_flag.upper()} expert mode")
 
     # Save & recall
     saved_group = parser.add_argument_group("save & recall")
@@ -368,14 +409,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--cmd", action="store_true", help="Generate a shell command instead of prose"
     )
     cmd_group.add_argument(
-        "--dry-run", action="store_true", help="Show command without executing (use with --cmd)"
+        "--dry-run",
+        action="store_true",
+        help="Show the command (or, with --agent, the plan) without executing anything",
     )
     cmd_group.add_argument(
         "--execute",
         action="store_true",
         help=(
-            "Auto-execute commands that don't match destructive patterns. "
-            "The pattern list is a best-effort allowlist, not a sandbox — review before trusting."
+            "Generate a command (implies --cmd) and run it if it doesn't match a destructive "
+            "pattern. The pattern list is best-effort, not a sandbox — review before trusting."
         ),
     )
 
@@ -385,14 +428,14 @@ def build_parser() -> argparse.ArgumentParser:
     agent_group.add_argument(
         "--auto-approve",
         action="store_true",
-        help="Auto-approve non-destructive commands in agent mode",
+        help="Auto-approve non-destructive commands in agent mode (the plan is always shown "
+        "for approval)",
     )
     agent_group.add_argument(
         "--agent-max-steps",
-        type=int,
-        default=10,
+        type=_positive_int,
         metavar="N",
-        help="Max agent steps (default: 10)",
+        help=f"Max agent steps (default: {DEFAULT_AGENT_MAX_STEPS})",
     )
 
     # Clipboard
@@ -412,17 +455,54 @@ def build_parser() -> argparse.ArgumentParser:
     mgmt_group.add_argument(
         "--list-providers", action="store_true", help="List available providers"
     )
-    mgmt_group.add_argument("--list-models", action="store_true", help="List models for a provider")
     mgmt_group.add_argument(
-        "--set-default-provider", metavar="PROVIDER", help="Set the default provider"
+        "--list-models", action="store_true", help="List models for a provider (see -p)"
+    )
+    mgmt_group.add_argument(
+        "--set-default-provider",
+        choices=PROVIDER_CLASSES,
+        metavar="PROVIDER",
+        help="Set the default provider",
     )
 
     return parser
 
 
-def main(argv: list[str] | None = None) -> int:
+def _validate_flag_combinations(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+    """Reject combinations argparse groups can't express (exits with status 2)."""
+    actions = [_flag_name(dest) for dest in MANAGEMENT_FLAGS if getattr(args, dest)]
+    if len(actions) > 1:
+        parser.error(f"{' and '.join(actions)} can't be combined; run them separately")
+    if actions and args.query:
+        parser.error(f"{actions[0]} doesn't take a question")
+
+    if args.execute and args.dry_run:
+        parser.error("--execute and --dry-run contradict each other")
+
+    if args.agent:
+        conflicts = [_flag_name(dest) for dest in NOT_WITH_AGENT if getattr(args, dest)]
+        if conflicts:
+            parser.error(f"{', '.join(conflicts)} can't be used with --agent")
+    else:
+        if args.auto_approve:
+            parser.error("--auto-approve only applies to --agent")
+        if args.agent_max_steps is not None:
+            parser.error("--agent-max-steps only applies to --agent")
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = build_parser()
     args = parser.parse_args(argv)
+    _validate_flag_combinations(args, parser)
+    if args.execute:
+        args.cmd = True
+    args.agent_max_steps = args.agent_max_steps or DEFAULT_AGENT_MAX_STEPS
+    args.usage = parser.format_usage()
+    return args
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
 
     if args.no_color:
         disable_color()
@@ -430,7 +510,7 @@ def main(argv: list[str] | None = None) -> int:
     # The single error boundary: business logic raises typed errors carrying an
     # actionable hint; nothing below this point prints a traceback or exits.
     try:
-        return _run(args, parser)
+        return _run(args)
     except ProviderError as error:
         render_error(str(error), hint=error.hint or _provider_hint(error))
         return 1
@@ -455,7 +535,7 @@ def _provider_hint(error: ProviderError) -> str | None:
     return None
 
 
-def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+def _run(args: argparse.Namespace) -> int:
     paths = resolve_paths()
     config = load_config(paths)
 
@@ -512,7 +592,7 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     query = "\n\n".join(part for part in query_parts if part)
 
     if not query:
-        parser.print_usage(sys.stderr)
+        sys.stderr.write(args.usage)
         render_error("No question given.", hint='Try: ask "your question"  (or ask --help)')
         return 2
 
@@ -539,9 +619,9 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
 
     max_tokens = config.defaults.quick_max_tokens if args.quick else config.defaults.max_tokens
 
-    template = _determine_template(args)
+    templates = _determine_templates(args)
     system_prompt = resolve_system_prompt(
-        template, args.quick, paths.templates_dir, _select_base_system_prompt(config.defaults)
+        templates, args.quick, paths.templates_dir, _select_base_system_prompt(config.defaults)
     )
 
     # Inject command-generation suffix when in cmd mode
@@ -657,7 +737,8 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     # Record usage stats after a successful query; a stats failure must not lose the answer
     if response:
         try:
-            record_query(paths.stats_file, template or "default", len(query), len(response))
+            mode = "+".join(templates) or "default"
+            record_query(paths.stats_file, mode, len(query), len(response))
         except StorageError as error:
             render_warning(f"Usage statistics not recorded: {error}")
 
