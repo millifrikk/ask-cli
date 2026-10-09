@@ -470,13 +470,15 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
         return 0
 
     if args.file or args.files:
-        file_context = read_attachments(
+        attachments = read_attachments(
             args.file or [],
             args.files or [],
             max_file_size=args.max_file_size * 1024,
         )
-        if file_context:
-            query = f"{file_context}\n\n{query}"
+        for warning in attachments.warnings:
+            render_warning(warning)
+        if attachments.text:
+            query = f"{attachments.text}\n\n{query}"
 
     provider = _build_provider(provider_name, config)
 
