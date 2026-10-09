@@ -12,6 +12,12 @@ QUICK_SUFFIX = (
     "No explanation unless absolutely critical."
 )
 
+JSON_SYSTEM_SUFFIX = (
+    "Output mode: JSON. Respond with a single valid JSON document and nothing else — "
+    "no prose, no explanation, and no Markdown code fence, even if earlier "
+    "instructions ask you to fence code."
+)
+
 BUILTIN_TEMPLATES: dict[str, str] = {
     "explain": (
         "You are an expert technical explainer. "

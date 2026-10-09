@@ -23,11 +23,12 @@ from ask_cli.core.commands import (
     run_command,
 )
 from ask_cli.core.conversation import run_query
+from ask_cli.core.fences import is_json_response
 from ask_cli.core.files import read_attachments
 from ask_cli.core.history import ConversationHistory
 from ask_cli.core.saved import delete_saved, list_saved, recall_response, save_response
 from ask_cli.core.stats import load_stats, record_query, reset_stats
-from ask_cli.core.templates import resolve_system_prompt
+from ask_cli.core.templates import JSON_SYSTEM_SUFFIX, resolve_system_prompt
 from ask_cli.exceptions import (
     AgentError,
     AttachmentError,
@@ -508,6 +509,10 @@ def main() -> None:
         history.start_new()
 
     output_mode = _determine_output_mode(args)
+    if output_mode == "json":
+        system_prompt = (
+            f"{system_prompt}\n\n{JSON_SYSTEM_SUFFIX}" if system_prompt else JSON_SYSTEM_SUFFIX
+        )
 
     try:
         with ResponseDisplay(output_mode) as display:
@@ -532,6 +537,9 @@ def main() -> None:
             hint = "Wait a moment and try again, or switch to a different provider."
         render_error(str(e), hint=hint)
         sys.exit(1)
+
+    if output_mode == "json" and response and not is_json_response(response):
+        render_warning("The model's response is not valid JSON.")
 
     # --save: persist the response after a successful query
     if args.save and response:

@@ -1,5 +1,6 @@
 """Parsing of Markdown fenced code blocks in model responses."""
 
+import json
 import re
 
 # Language tag is any run of non-space characters (python, c++, objective-c); anything
@@ -21,3 +22,12 @@ def strip_outer_fence(text: str) -> str:
     if not blocks:
         return text.strip()
     return text
+
+
+def is_json_response(text: str) -> bool:
+    """True if the response, once any single surrounding fence is removed, parses as JSON."""
+    try:
+        json.loads(strip_outer_fence(text))
+    except json.JSONDecodeError:
+        return False
+    return True

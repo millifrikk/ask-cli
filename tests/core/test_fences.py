@@ -1,6 +1,6 @@
 """Tests for fenced code-block parsing."""
 
-from ask_cli.core.fences import extract_code_blocks, strip_outer_fence
+from ask_cli.core.fences import extract_code_blocks, is_json_response, strip_outer_fence
 
 
 class TestExtractCodeBlocks:
@@ -35,3 +35,14 @@ class TestStripOuterFence:
     def test_multiple_blocks_left_untouched(self):
         text = "```json\n[1]\n```\n```json\n[2]\n```"
         assert strip_outer_fence(text) == text
+
+
+class TestIsJsonResponse:
+    def test_bare_json(self):
+        assert is_json_response('{"a": [1, 2]}')
+
+    def test_fenced_json(self):
+        assert is_json_response('```json\n{"a": 1}\n```')
+
+    def test_prose_is_not_json(self):
+        assert not is_json_response("1. Ubuntu\n2. Fedora")

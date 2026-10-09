@@ -337,6 +337,49 @@ def test_cmd_injects_system_suffix():
     assert CMD_SYSTEM_SUFFIX in call_kwargs["system_prompt"]
 
 
+# --- json mode ---
+
+
+def _run_with_response(argv: list[str], response: str) -> MagicMock:
+    with (
+        patch("ask_cli.cli.load_config", return_value=_make_config()),
+        patch("ask_cli.cli.run_query", return_value=response) as mock_run,
+        patch("sys.stdin.isatty", return_value=True),
+        patch("ask_cli.cli.ConversationHistory"),
+        patch.object(sys, "argv", ["ask", *argv]),
+    ):
+        from ask_cli.cli import main
+
+        main()
+    return mock_run
+
+
+def test_json_injects_json_only_system_suffix():
+    from ask_cli.core.templates import JSON_SYSTEM_SUFFIX
+
+    mock_run = _run_with_response(["--json", "list distros"], '{"a": 1}')
+    assert mock_run.call_args[1]["system_prompt"].endswith(JSON_SYSTEM_SUFFIX)
+
+
+def test_non_json_modes_do_not_get_json_suffix():
+    from ask_cli.core.templates import JSON_SYSTEM_SUFFIX
+
+    mock_run = _run_with_response(["--raw", "list distros"], "text")
+    assert JSON_SYSTEM_SUFFIX not in (mock_run.call_args[1]["system_prompt"] or "")
+
+
+def test_json_warns_on_stderr_when_response_is_not_json(capsys):
+    _run_with_response(["--json", "list distros"], "1. Ubuntu\n2. Fedora")
+    captured = capsys.readouterr()
+    assert "not valid JSON" in captured.err
+    assert "not valid JSON" not in captured.out
+
+
+def test_json_fenced_valid_response_does_not_warn(capsys):
+    _run_with_response(["--json", "list distros"], '```json\n["ubuntu"]\n```')
+    assert "not valid JSON" not in capsys.readouterr().err
+
+
 # --- clipboard tests ---
 
 
