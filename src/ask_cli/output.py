@@ -3,6 +3,7 @@
 import pyperclip
 from rich.console import Console
 from rich.markdown import CodeBlock, Markdown
+from rich.markup import escape
 from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.table import Table
@@ -81,20 +82,22 @@ def render_code(code: str, language: str = "", theme: str = "monokai") -> None:
 
 def render_error(message: str, hint: str | None = None) -> None:
     """Render an error message with optional actionable hint."""
-    lines = [f"[bold red]Error:[/bold red] {message}"]
+    # Messages carry file paths, provider error bodies and user input — escape them
+    # so brackets render literally instead of being parsed as Rich markup.
+    lines = [f"[bold red]Error:[/bold red] {escape(message)}"]
     if hint:
-        lines.append(f"[dim]{hint}[/dim]")
+        lines.append(f"[dim]{escape(hint)}[/dim]")
     err_console.print("\n".join(lines))
 
 
 def render_warning(message: str) -> None:
     """Render a warning message."""
-    err_console.print(f"[bold yellow]Warning:[/bold yellow] {message}")
+    err_console.print(f"[bold yellow]Warning:[/bold yellow] {escape(message)}")
 
 
 def render_info(message: str) -> None:
     """Render an informational message."""
-    err_console.print(f"[dim]{message}[/dim]")
+    err_console.print(f"[dim]{escape(message)}[/dim]")
 
 
 def _sanitize_for_clipboard(text: str) -> str:

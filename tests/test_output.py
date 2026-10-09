@@ -84,6 +84,24 @@ class TestDiagnosticsGoToStderr:
         assert "copied to clipboard" in captured.err
 
 
+class TestMarkupEscaping:
+    def test_closing_tag_in_error_does_not_crash(self, capsys):
+        output.render_error("provider said: bad [/red] tag")
+        assert "bad [/red] tag" in capsys.readouterr().err
+
+    def test_square_brackets_in_paths_are_kept(self, capsys):
+        output.render_warning("Skipping binary file: app/[slug]/page.tsx")
+        assert "app/[slug]/page.tsx" in capsys.readouterr().err
+
+    def test_hint_is_escaped(self, capsys):
+        output.render_error("failed", hint="model [default] not found")
+        assert "model [default] not found" in capsys.readouterr().err
+
+    def test_info_is_escaped(self, capsys):
+        output.render_info("Saved response as '[wip]'.")
+        assert "'[wip]'" in capsys.readouterr().err
+
+
 class TestDisableColor:
     def test_errors_have_no_ansi_and_no_literal_markup(self, monkeypatch, capsys):
         # Simulate a colour terminal so the test fails if colour survives --no-color
