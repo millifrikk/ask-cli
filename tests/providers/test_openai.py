@@ -180,3 +180,13 @@ class TestOpenAIProviderTransport:
         provider = make_provider(lambda request: broken_sse_response(openai_sse("Hello")[:200]))
         with pytest.raises(ProviderError, match="lost"):
             list(provider.stream(MESSAGES, "gpt-4o", 100))
+
+    @pytest.mark.parametrize(
+        ("finish_reason", "expected"),
+        [("stop", "end"), ("length", "max_tokens"), ("content_filter", "filtered")],
+    )
+    def test_records_why_the_stream_stopped(self, make_provider, finish_reason, expected):
+        body = openai_sse("partial", finish_reason=finish_reason)
+        provider = make_provider(lambda request: sse_response(body))
+        list(provider.stream(MESSAGES, "gpt-4o", 100))
+        assert provider.last_stop_reason == expected

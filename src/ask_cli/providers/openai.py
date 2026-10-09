@@ -5,7 +5,7 @@ from collections.abc import Generator
 import openai
 
 from ask_cli.config import ProviderConfig
-from ask_cli.providers.base import BaseProvider
+from ask_cli.providers.base import BaseProvider, normalize_stop_reason
 from ask_cli.providers.errors import openai_errors
 
 
@@ -36,6 +36,7 @@ class OpenAIProvider(BaseProvider):
         think: bool | None = None,  # noqa: ARG002
     ) -> Generator[str, None, None]:
         self.validate()
+        self.last_stop_reason = None
         client = self._get_client()
 
         # Inject system prompt as the first message
@@ -56,6 +57,10 @@ class OpenAIProvider(BaseProvider):
                 **{token_kwarg: max_tokens},
             )
             for chunk in stream:
-                delta = chunk.choices[0].delta if chunk.choices else None
-                if delta is not None and delta.content is not None:
-                    yield delta.content
+                choice = chunk.choices[0] if chunk.choices else None
+                if choice is None:
+                    continue
+                if choice.finish_reason:
+                    self.last_stop_reason = normalize_stop_reason(choice.finish_reason)
+                if choice.delta is not None and choice.delta.content is not None:
+                    yield choice.delta.content

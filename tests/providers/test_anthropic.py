@@ -96,3 +96,14 @@ def test_missing_api_key_fails_before_any_request():
     provider = AnthropicProvider(ProviderConfig())
     with pytest.raises(ProviderError, match="not configured"):
         list(provider.stream(MESSAGES, "m", 100))
+
+
+@pytest.mark.parametrize(
+    ("stop_reason", "expected"),
+    [("end_turn", "end"), ("max_tokens", "max_tokens"), ("refusal", "filtered")],
+)
+def test_records_why_the_stream_stopped(make_provider, stop_reason, expected):
+    body = anthropic_sse_complete("partial", stop_reason=stop_reason)
+    provider = make_provider(lambda request: sse_response(body))
+    list(provider.stream(MESSAGES, "m", 100))
+    assert provider.last_stop_reason == expected

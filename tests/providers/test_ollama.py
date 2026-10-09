@@ -107,3 +107,9 @@ class TestOllamaProvider:
         provider = make_provider(lambda request: broken_sse_response(openai_sse("Hi")[:150]))
         with pytest.raises(ProviderError, match="lost"):
             list(provider.stream(MESSAGES, "llama", 100))
+
+    def test_records_token_limit_stop(self, make_provider):
+        body = openai_sse("partial", finish_reason="length")
+        provider = make_provider(lambda request: sse_response(body))
+        list(provider.stream(MESSAGES, "llama", 100))
+        assert provider.last_stop_reason == "max_tokens"

@@ -91,3 +91,20 @@ def test_programming_errors_are_not_disguised_as_api_errors(provider, client):
     client.models.generate_content_stream.side_effect = TypeError("bug in our code")
     with pytest.raises(TypeError):
         list(provider.stream(MESSAGES, "gemini", 100))
+
+
+@pytest.mark.parametrize(
+    ("finish_reason", "expected"),
+    [("STOP", "end"), ("MAX_TOKENS", "max_tokens"), ("SAFETY", "filtered")],
+)
+def test_records_why_the_stream_stopped(provider, client, finish_reason, expected):
+    from google.genai import types
+
+    last = SimpleNamespace(
+        text="", candidates=[SimpleNamespace(finish_reason=types.FinishReason(finish_reason))]
+    )
+    client.models.generate_content_stream.return_value = iter(
+        [SimpleNamespace(text="Hi", candidates=None), last]
+    )
+    list(provider.stream(MESSAGES, "gemini", 100))
+    assert provider.last_stop_reason == expected

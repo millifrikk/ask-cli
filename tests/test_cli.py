@@ -581,6 +581,47 @@ def test_piped_text_is_separated_from_the_question():
     assert mock_run.call_args.kwargs["query"] == "explain this\n\nERROR at line 3"
 
 
+# --- response feedback ---
+
+
+def _main_with_provider(argv: list[str], response: str, stop_reason: str | None, loaded=True):
+    from ask_cli.cli import main
+
+    provider = MagicMock()
+    provider.last_stop_reason = stop_reason
+    with (
+        patch("ask_cli.cli.load_config", return_value=_make_config()),
+        patch("ask_cli.cli._build_provider", return_value=provider),
+        patch("ask_cli.cli.ConversationHistory") as history_class,
+        patch("ask_cli.cli.run_query", return_value=response),
+    ):
+        history_class.return_value.load.return_value = loaded
+        history_class.return_value.messages = []
+        return main(argv)
+
+
+def test_token_limit_cut_off_is_flagged(capsys):
+    assert _main_with_provider(["--quick", "explain"], "partial answ", "max_tokens") == 0
+    err = capsys.readouterr().err
+    assert "cut off" in err
+    assert "--quick" in err
+
+
+def test_empty_response_is_an_error(capsys):
+    assert _main_with_provider(["hello"], "", "end") == 1
+    assert "empty response" in capsys.readouterr().err
+
+
+def test_filtered_empty_response_says_why(capsys):
+    assert _main_with_provider(["hello"], "", "filtered") == 1
+    assert "content filter" in capsys.readouterr().err
+
+
+def test_continue_without_recent_history_says_so(capsys):
+    assert _main_with_provider(["-c", "and then?"], "ok", "end", loaded=False) == 0
+    assert "starting a new conversation" in capsys.readouterr().err
+
+
 # --- json mode ---
 
 

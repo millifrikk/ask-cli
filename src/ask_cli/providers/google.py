@@ -9,7 +9,7 @@ from google.genai import types
 
 from ask_cli.config import ProviderConfig
 from ask_cli.exceptions import ModelNotFoundError, ProviderError
-from ask_cli.providers.base import BaseProvider
+from ask_cli.providers.base import BaseProvider, normalize_stop_reason
 from ask_cli.providers.errors import connection_lost
 
 
@@ -39,6 +39,7 @@ class GoogleProvider(BaseProvider):
         system_prompt: str | None = None,
         think: bool | None = None,  # noqa: ARG002
     ) -> Generator[str, None, None]:
+        self.last_stop_reason = None
         self.validate()
         client = self._get_client()
 
@@ -65,6 +66,9 @@ class GoogleProvider(BaseProvider):
             for chunk in response:
                 if chunk.text:
                     yield chunk.text
+                candidates = getattr(chunk, "candidates", None)
+                if candidates and candidates[0].finish_reason:
+                    self.last_stop_reason = normalize_stop_reason(candidates[0].finish_reason)
         except genai_errors.APIError as e:
             raise self._translate_api_error(e, model) from e
         except httpx.HTTPError as e:

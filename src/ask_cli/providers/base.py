@@ -7,6 +7,24 @@ from typing import ClassVar
 from ask_cli.config import ProviderConfig, api_key_env_var
 from ask_cli.exceptions import ProviderError
 
+# Raw stop/finish reasons from each SDK, normalised. Anything else counts as "end".
+_STOP_REASONS = {
+    "max_tokens": "max_tokens",  # Anthropic
+    "length": "max_tokens",  # OpenAI / Ollama
+    "MAX_TOKENS": "max_tokens",  # Gemini
+    "refusal": "filtered",
+    "content_filter": "filtered",
+    "SAFETY": "filtered",
+    "PROHIBITED_CONTENT": "filtered",
+    "BLOCKLIST": "filtered",
+}
+
+
+def normalize_stop_reason(raw: object) -> str:
+    """Map an SDK stop reason to "end", "max_tokens" or "filtered"."""
+    key = getattr(raw, "value", raw)  # Gemini uses an enum
+    return _STOP_REASONS.get(key, "end") if isinstance(key, str) else "end"
+
 
 class BaseProvider(ABC):
     """Abstract provider — one subclass per AI backend."""
@@ -17,6 +35,8 @@ class BaseProvider(ABC):
 
     def __init__(self, config: ProviderConfig) -> None:
         self.config = config
+        # Why the last stream stopped: "end", "max_tokens", "filtered", or None if unknown
+        self.last_stop_reason: str | None = None
 
     @abstractmethod
     def stream(

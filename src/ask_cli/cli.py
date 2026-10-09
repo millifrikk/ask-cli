@@ -174,6 +174,27 @@ def _handle_list_models(provider_name: str, config: AppConfig) -> None:
     render_model_list(provider_name, models)
 
 
+def _check_completeness(
+    response: str, stop_reason: str | None, max_tokens: int, quick: bool
+) -> None:
+    longer = "drop --quick" if quick else "raise defaults.max_tokens in your config"
+    if not response:
+        if stop_reason == "filtered":
+            raise AskCLIError(
+                "The model returned an empty response: it was blocked by a content filter.",
+                hint="Rephrase the question, or try another provider with -p.",
+            )
+        hint = (
+            f"The {max_tokens}-token limit was used up before any text (reasoning models do "
+            f"this); {longer}."
+            if stop_reason == "max_tokens"
+            else "Try again, or try another model with --smart or -p."
+        )
+        raise AskCLIError("The model returned an empty response.", hint=hint)
+    if stop_reason == "max_tokens":
+        render_warning(f"Response was cut off at the {max_tokens}-token limit; {longer}.")
+
+
 def _read_piped_stdin() -> str:
     # Only read when stdin is a pipe or a redirected file. A TTY, /dev/null or an
     # IDE's never-closed stdin (character device or socket) would block forever.
@@ -536,7 +557,8 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     history = ConversationHistory(paths.history_file, config.defaults.history_ttl_hours)
     use_history = args.continue_session
     if use_history:
-        history.load()
+        if not history.load():
+            render_info("No recent conversation to continue — starting a new conversation.")
     else:
         history.start_new()
 
@@ -560,6 +582,8 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
             # via Ollama, etc.) so the token budget doesn't get eaten by thinking.
             think=False if args.quick else None,
         )
+
+    _check_completeness(response, provider.last_stop_reason, max_tokens, quick=args.quick)
 
     if output_mode == "json" and response and not is_json_response(response):
         render_warning("The model's response is not valid JSON.")
