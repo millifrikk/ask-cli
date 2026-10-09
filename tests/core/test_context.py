@@ -240,3 +240,31 @@ def test_interactive_shell_options_without_c_stay_interactive(parent):
         patch("ask_cli.core.context.parent_cmdline", return_value=parent),
     ):
         assert invocation_is_interactive_wsl() is True
+
+
+def test_parent_cmdline_reads_the_real_parent_process():
+    import os
+    from pathlib import Path
+
+    from ask_cli.core.context import parent_cmdline
+
+    raw = Path(f"/proc/{os.getppid()}/cmdline").read_bytes()
+    expected = raw.split(b"\0")[0].decode()
+    assert parent_cmdline()[0] == expected
+
+
+def test_parent_cmdline_is_empty_when_proc_is_unreadable():
+    from ask_cli.core.context import parent_cmdline
+
+    with patch("os.getppid", return_value=2**31 - 1):
+        assert parent_cmdline() == []
+
+
+def test_missing_stdin_is_treated_as_not_interactive():
+    from ask_cli.core.context import invocation_is_interactive_wsl
+
+    with (
+        patch.dict("os.environ", {"WSL_DISTRO_NAME": "Ubuntu"}, clear=True),
+        patch("sys.stdin", None),
+    ):
+        assert invocation_is_interactive_wsl() is False
