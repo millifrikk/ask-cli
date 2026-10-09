@@ -1,178 +1,184 @@
-"""Tests for the multi-step terminal agent."""
+"""Tests for the multi-step terminal agent, driven through a fake UI."""
 
+from collections.abc import Iterable
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from ask_cli.core.agent import run_agent
-from ask_cli.core.commands import run_command_with_output
+import pytest
+
+from ask_cli.core.agent import AGENT_EXEC_SYSTEM, AGENT_PLAN_SYSTEM, run_agent
+from ask_cli.exceptions import StorageError
 
 
-def _make_provider(*responses: str) -> MagicMock:
-    """Create a mock provider whose stream() yields chunks from each response in turn."""
+class FakeUI:
+    def __init__(self, answers: Iterable[bool] = (), recovery: str = "abort") -> None:
+        self.answers = list(answers)
+        self.recovery = recovery
+        self.prompts: list[tuple[str, str | None]] = []
+        self.infos: list[str] = []
+        self.warnings: list[str] = []
+        self.steps: list[str] = []
+        self.outputs: list[str] = []
+        self.recovery_asked = 0
+
+    def stream(self, chunks: Iterable[str]) -> str:
+        return "".join(chunks)
+
+    def confirm(self, prompt: str, exact: str | None = None) -> bool:
+        self.prompts.append((prompt, exact))
+        return self.answers.pop(0) if self.answers else False
+
+    def choose_recovery(self) -> str:
+        self.recovery_asked += 1
+        return self.recovery
+
+    def info(self, message: str) -> None:
+        self.infos.append(message)
+
+    def warning(self, message: str) -> None:
+        self.warnings.append(message)
+
+    def show_step(self, step: int, max_steps: int, command: str) -> None:
+        self.steps.append(command)
+
+    def show_output(self, output: str) -> None:
+        self.outputs.append(output)
+
+
+def _provider(*responses: str) -> MagicMock:
     provider = MagicMock()
-    # Each call to stream() should return the next response as a single chunk
-    provider.stream.side_effect = [iter([r]) for r in responses]
+    provider.stream.side_effect = [iter([response]) for response in responses]
     return provider
 
 
-def _run_agent_auto(provider, goal="do something", max_steps=5, log_path=None):
-    if log_path is None:
-        log_path = Path("/tmp/test_agent_log.txt")
-    run_agent(
-        goal=goal,
-        provider=provider,
-        model="test-model",
-        max_tokens=512,
-        base_system_prompt=None,
-        max_steps=max_steps,
-        auto_approve=True,
-        log_path=log_path,
-    )
+def _run(provider, ui, tmp_path: Path, **overrides) -> None:
+    options = {
+        "goal": "do something",
+        "provider": provider,
+        "model": "test-model",
+        "max_tokens": 512,
+        "base_system_prompt": None,
+        "max_steps": 5,
+        "auto_approve": True,
+        "dry_run": False,
+        "think": None,
+        "log_path": tmp_path / "log.txt",
+        "ui": ui,
+    }
+    options.update(overrides)
+    run_agent(**options)
 
 
-def test_agent_calls_provider_stream(tmp_path):
-    # Plan response + DONE (exec step 1)
-    provider = _make_provider("1. echo hello", "DONE")
-    with (
-        patch("ask_cli.core.agent.render_info"),
-        patch("ask_cli.core.agent.render_warning"),
-    ):
-        _run_agent_auto(provider, log_path=tmp_path / "log.txt")
-    assert provider.stream.call_count >= 1
+@pytest.fixture
+def run_step():
+    with patch("ask_cli.core.agent.run_command_with_output", return_value=("hi", 0)) as run:
+        yield run
 
 
-def test_agent_stops_on_done_response(tmp_path):
-    provider = _make_provider("1. echo hello", "DONE")
-    with (
-        patch("ask_cli.core.agent.render_info") as mock_info,
-        patch("ask_cli.core.agent.render_warning"),
-    ):
-        _run_agent_auto(provider, log_path=tmp_path / "log.txt")
-    info_messages = [str(c) for c in mock_info.call_args_list]
-    assert any("complete" in m or "Complete" in m for m in info_messages)
-    # Only plan call + one exec call (DONE) = 2 total
+def test_plan_needs_approval_even_with_auto_approve(tmp_path, run_step):
+    provider = _provider("1. echo hi", "```bash\necho hi\n```")
+    ui = FakeUI(answers=[False])
+    _run(provider, ui, tmp_path, auto_approve=True)
+    assert ui.prompts[0][0].startswith("Proceed with this plan")
+    assert provider.stream.call_count == 1
+    run_step.assert_not_called()
+
+
+def test_dry_run_shows_the_plan_and_executes_nothing(tmp_path, run_step):
+    provider = _provider("1. rm -rf /tmp/x")
+    ui = FakeUI()
+    _run(provider, ui, tmp_path, dry_run=True)
+    assert provider.stream.call_count == 1
+    assert ui.prompts == []
+    run_step.assert_not_called()
+    assert any("Dry run" in message for message in ui.infos)
+
+
+def test_base_prompt_and_think_reach_every_model_call(tmp_path, run_step):
+    provider = _provider("1. echo hi", "```bash\necho hi\n```", "DONE")
+    _run(provider, FakeUI(answers=[True]), tmp_path, base_system_prompt="BASE", think=False)
+    plan_call, *exec_calls = provider.stream.call_args_list
+    assert plan_call.args[3] == f"BASE\n\n{AGENT_PLAN_SYSTEM}"
+    assert all(call.args[3] == f"BASE\n\n{AGENT_EXEC_SYSTEM}" for call in exec_calls)
+    assert all(call.kwargs["think"] is False for call in provider.stream.call_args_list)
+
+
+def test_auto_approve_runs_safe_steps_without_asking(tmp_path, run_step):
+    provider = _provider("1. echo hi", "```bash\necho hi\n```", "DONE")
+    ui = FakeUI(answers=[True])
+    _run(provider, ui, tmp_path)
+    assert len(ui.prompts) == 1  # the plan only
+    run_step.assert_called_once()
+    assert any("complete" in message for message in ui.infos)
+
+
+def test_destructive_step_needs_the_exact_word_even_with_auto_approve(tmp_path, run_step):
+    provider = _provider("1. rm /tmp/x", "```bash\nrm /tmp/x\n```", "DONE")
+    ui = FakeUI(answers=[True, False])
+    _run(provider, ui, tmp_path)
+    assert ui.prompts[1][1] == "yes"
+    run_step.assert_not_called()
+
+
+def test_declined_step_can_be_skipped(tmp_path, run_step):
+    provider = _provider("1. echo a", "```bash\necho a\n```", "DONE")
+    ui = FakeUI(answers=[True, False], recovery="skip")
+    _run(provider, ui, tmp_path, auto_approve=False)
+    run_step.assert_not_called()
+    last_exec_messages = provider.stream.call_args_list[-1].args[0]
+    assert last_exec_messages[-1]["content"].startswith("Step skipped")
+
+
+def test_declined_step_can_abort(tmp_path, run_step):
+    provider = _provider("1. echo a", "```bash\necho a\n```")
+    ui = FakeUI(answers=[True, False], recovery="abort")
+    _run(provider, ui, tmp_path, auto_approve=False)
+    assert any("aborted" in message for message in ui.infos)
     assert provider.stream.call_count == 2
 
 
-def test_agent_stops_at_max_steps(tmp_path):
-    # Plan + 3 exec responses (none are DONE)
-    provider = _make_provider(
-        "1. echo hi",
-        "```bash\necho hi\n```",
-        "```bash\necho hi\n```",
-        "```bash\necho hi\n```",
-    )
-    with (
-        patch("ask_cli.core.agent.render_info"),
-        patch("ask_cli.core.agent.render_warning") as mock_warn,
-        patch("ask_cli.core.agent.run_command_with_output", return_value=("hi", 0)),
-        patch("ask_cli.core.agent.log_command"),
-    ):
-        _run_agent_auto(provider, max_steps=3, log_path=tmp_path / "log.txt")
-    warn_messages = [str(c) for c in mock_warn.call_args_list]
-    assert any("max steps" in m for m in warn_messages)
+def test_failed_step_reports_and_feeds_back_output(tmp_path):
+    provider = _provider("1. false", "```bash\nfalse\n```", "DONE")
+    ui = FakeUI(answers=[True], recovery="skip")
+    with patch("ask_cli.core.agent.run_command_with_output", return_value=("boom", 3)):
+        _run(provider, ui, tmp_path)
+    assert any("exit 3" in warning for warning in ui.warnings)
+    feedback = provider.stream.call_args_list[-1].args[0][-1]["content"]
+    assert "boom" in feedback
 
 
-def test_agent_skips_when_no_command_found(tmp_path):
-    # Plan + exec response — mock extract_command to return None
-    provider = _make_provider("1. do the thing", "some prose without a fenced block")
-    with (
-        patch("ask_cli.core.agent.render_info"),
-        patch("ask_cli.core.agent.render_warning") as mock_warn,
-        patch("ask_cli.core.agent.extract_command", return_value=None),
-    ):
-        _run_agent_auto(provider, log_path=tmp_path / "log.txt")
-    warn_messages = [str(c) for c in mock_warn.call_args_list]
-    assert any("No command" in m for m in warn_messages)
+def test_command_output_is_truncated_before_reaching_the_model(tmp_path):
+    provider = _provider("1. cat big", "```bash\ncat big\n```", "DONE")
+    with patch("ask_cli.core.agent.run_command_with_output", return_value=("x" * 50_000, 0)):
+        _run(provider, FakeUI(answers=[True]), tmp_path)
+    feedback = provider.stream.call_args_list[-1].args[0][-1]["content"]
+    assert len(feedback) < 10_000
 
 
-def test_agent_auto_approve_skips_confirm(tmp_path):
-    provider = _make_provider("1. echo hi", "```bash\necho hi\n```", "DONE")
-    with (
-        patch("ask_cli.core.agent.render_info"),
-        patch("ask_cli.core.agent.render_warning"),
-        patch("ask_cli.core.agent.run_command_with_output", return_value=("hi", 0)),
-        patch("ask_cli.core.agent.log_command"),
-        patch("ask_cli.core.agent.confirm") as mock_confirm,
-    ):
-        _run_agent_auto(provider, log_path=tmp_path / "log.txt")
-    # auto_approve=True should never call confirm for non-destructive commands
-    mock_confirm.assert_not_called()
+def test_stops_at_max_steps(tmp_path, run_step):
+    provider = _provider("1. echo hi", *["```bash\necho hi\n```"] * 3)
+    ui = FakeUI(answers=[True])
+    _run(provider, ui, tmp_path, max_steps=3)
+    assert any("max steps" in warning for warning in ui.warnings)
 
 
-def test_agent_destructive_requires_confirm_even_with_auto_approve(tmp_path):
-    # Plan + exec response with a destructive command
-    provider = _make_provider("1. rm /tmp/x", "```bash\nrm /tmp/x\n```", "DONE")
-    with (
-        patch("ask_cli.core.agent.render_info"),
-        patch("ask_cli.core.agent.render_warning"),
-        patch("ask_cli.core.agent.run_command_with_output", return_value=("", 0)),
-        patch("ask_cli.core.agent.log_command"),
-        patch("ask_cli.core.agent.confirm", return_value=True) as mock_confirm,
-    ):
-        _run_agent_auto(provider, log_path=tmp_path / "log.txt")
-    # confirm must be called for the destructive command, demanding the exact word
-    mock_confirm.assert_called()
-    assert mock_confirm.call_args.kwargs.get("exact") == "yes"
+def test_stops_when_no_command_found(tmp_path, run_step):
+    provider = _provider("1. do the thing", "some prose without a fenced block")
+    ui = FakeUI(answers=[True])
+    _run(provider, ui, tmp_path)
+    assert any("No command" in warning for warning in ui.warnings)
 
 
-def test_agent_destructive_command_not_run_on_plain_y(tmp_path):
-    provider = _make_provider("1. rm /tmp/x", "```bash\nrm /tmp/x\n```", "DONE")
-    with (
-        patch("ask_cli.core.agent.render_info"),
-        patch("ask_cli.core.agent.render_warning"),
-        patch("ask_cli.core.agent.run_command_with_output", return_value=("", 0)) as run,
-        patch("ask_cli.core.agent.log_command"),
-        patch("builtins.input", return_value="y"),
-    ):
-        _run_agent_auto(provider, log_path=tmp_path / "log.txt")
-    run.assert_not_called()
+def test_log_failure_warns_and_still_runs(tmp_path, run_step):
+    provider = _provider("1. echo hi", "```bash\necho hi\n```", "DONE")
+    ui = FakeUI(answers=[True])
+    with patch("ask_cli.core.agent.log_command", side_effect=StorageError("Command not logged")):
+        _run(provider, ui, tmp_path)
+    run_step.assert_called_once()
+    assert "Command not logged" in ui.warnings
 
 
-def test_run_command_with_output_captures_stdout():
-    output, exit_code = run_command_with_output("echo hello")
-    assert "hello" in output
-    assert exit_code == 0
-
-
-def test_run_command_with_output_returns_nonzero_exit_code():
-    _output, exit_code = run_command_with_output("exit 42")
-    assert exit_code == 42
-
-
-def test_agent_escapes_rich_markup_in_command_preview(tmp_path):
-    """Commands containing rich markup metacharacters must not render as markup."""
-    adversarial = "echo [bold red]FAKE ERROR[/bold red]"
-    provider = _make_provider("1. adversarial", f"```bash\n{adversarial}\n```", "DONE")
-    with (
-        patch("ask_cli.core.agent.render_info"),
-        patch("ask_cli.core.agent.render_warning"),
-        patch("ask_cli.core.agent.run_command_with_output", return_value=("", 0)),
-        patch("ask_cli.core.agent.log_command"),
-        patch("ask_cli.output.console.print") as mock_print,
-    ):
-        _run_agent_auto(provider, log_path=tmp_path / "log.txt")
-    # Find the Step line among console.print calls; the raw markup must be escaped
-    step_calls = [c for c in mock_print.call_args_list if "Step" in str(c.args)]
-    assert any(r"\[bold red]" in str(c.args) for c in step_calls), (
-        "Rich markup in command must be escaped, not rendered"
-    )
-
-
-def test_agent_escapes_rich_markup_in_command_output(tmp_path):
-    """Command output containing rich markup must not render as markup."""
-    adversarial_output = "normal line\n[link=http://evil]click[/link]"
-    provider = _make_provider("1. echo x", "```bash\necho x\n```", "DONE")
-    with (
-        patch("ask_cli.core.agent.render_info"),
-        patch("ask_cli.core.agent.render_warning"),
-        patch(
-            "ask_cli.core.agent.run_command_with_output",
-            return_value=(adversarial_output, 0),
-        ),
-        patch("ask_cli.core.agent.log_command"),
-        patch("ask_cli.output.console.print") as mock_print,
-    ):
-        _run_agent_auto(provider, log_path=tmp_path / "log.txt")
-    output_calls = [c for c in mock_print.call_args_list if "link" in str(c.args)]
-    assert any(r"\[link=http://evil]" in str(c.args) for c in output_calls)
+def test_core_agent_has_no_terminal_io():
+    source = (Path(__file__).parents[2] / "src/ask_cli/core/agent.py").read_text()
+    for forbidden in ("input(", "Live(", "console", "render_"):
+        assert forbidden not in source, forbidden

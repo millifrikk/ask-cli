@@ -1,5 +1,6 @@
 """Single rich.Console instance and all rendering helpers for ask-cli."""
 
+from collections.abc import Iterable
 from types import TracebackType
 
 import pyperclip
@@ -122,6 +123,42 @@ class ResponseDisplay:
         if self._mode == "markdown":
             return AskMarkdown(text)
         return Text(text)
+
+
+class ConsoleAgentUI:
+    """Terminal implementation of core.agent.AgentUI."""
+
+    def stream(self, chunks: Iterable[str]) -> str:
+        received: list[str] = []
+        with ResponseDisplay("markdown") as display:
+            for chunk in chunks:
+                received.append(chunk)
+                display.update(chunk)
+        return "".join(received)
+
+    def confirm(self, prompt: str, exact: str | None = None) -> bool:
+        return confirm(prompt, exact=exact)
+
+    def choose_recovery(self) -> str:
+        err_console.print("[dim]  [s] Skip this step and continue  [a] Abort agent[/dim]")
+        try:
+            choice = err_console.input("Choice [s/a]: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            err_console.print()
+            return "abort"
+        return "skip" if choice == "s" else "abort"
+
+    def info(self, message: str) -> None:
+        render_info(message)
+
+    def warning(self, message: str) -> None:
+        render_warning(message)
+
+    def show_step(self, step: int, max_steps: int, command: str) -> None:
+        console.print(f"[bold]Step {step}/{max_steps}:[/bold] [cyan]{escape(command)}[/cyan]")
+
+    def show_output(self, output: str) -> None:
+        console.print(f"[dim]{escape(output)}[/dim]")
 
 
 def _render_code_blocks(text: str) -> None:

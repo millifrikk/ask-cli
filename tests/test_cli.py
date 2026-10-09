@@ -702,6 +702,25 @@ def test_save_failure_after_answer_exits_1(capsys):
     assert "disk full" in capsys.readouterr().err
 
 
+def test_agent_receives_prompt_dry_run_think_and_a_console_ui():
+    from ask_cli.cli import main
+    from ask_cli.core.commands import CMD_SYSTEM_SUFFIX
+    from ask_cli.output import ConsoleAgentUI
+
+    with (
+        patch("ask_cli.cli.load_config", return_value=_make_config()),
+        patch("ask_cli.cli.run_agent") as run_agent,
+    ):
+        assert main(["--agent", "--dry-run", "--quick", "--docker", "tidy up"]) == 0
+    kwargs = run_agent.call_args.kwargs
+    assert CMD_SYSTEM_SUFFIX not in kwargs["base_system_prompt"]
+    assert kwargs["dry_run"] is True
+    assert kwargs["think"] is False
+    assert "Docker" in kwargs["base_system_prompt"]
+    assert kwargs["max_steps"] == 10
+    assert isinstance(kwargs["ui"], ConsoleAgentUI)
+
+
 # --- flag semantics ---
 
 

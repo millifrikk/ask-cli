@@ -1,57 +1,53 @@
 """Multi-step terminal agent — plan, approve, execute, adapt."""
 
+from collections.abc import Iterable
 from pathlib import Path
+from typing import Protocol
 
-from rich.live import Live
-from rich.markup import escape
-
-from ask_cli import output
 from ask_cli.core.commands import (
     extract_command,
     is_destructive,
     log_command,
     run_command_with_output,
+    truncate_for_model,
 )
-from ask_cli.output import AskMarkdown, confirm, render_info, render_warning
+from ask_cli.exceptions import StorageError
 from ask_cli.providers.base import BaseProvider
 
 AGENT_PLAN_SYSTEM = (
-    "You are a terminal task planner. Given a goal, output a concise numbered plan "
+    "Agent mode, planning step. Given a goal, output a concise numbered plan "
     "of shell commands to accomplish it. One command per step. No prose, no explanation."
 )
 
 AGENT_EXEC_SYSTEM = (
-    "You are an autonomous terminal agent executing a multi-step plan. "
+    "Agent mode, execution step. You are executing a multi-step plan. "
     "At each turn, output ONLY a single shell command in a ```bash ... ``` block, "
     "or output the single word DONE if the task is complete. "
     "Do not explain. Adapt to command output."
 )
 
 
-def _stream_to_text(
-    provider: BaseProvider,
-    messages: list[dict[str, str]],
-    model: str,
-    max_tokens: int,
-    system: str,
-) -> str:
-    """Stream a provider response and return the full text."""
-    accumulated: list[str] = []
-    with Live(console=output.console, refresh_per_second=15) as live:
-        for chunk in provider.stream(messages, model, max_tokens, system):
-            accumulated.append(chunk)
-            live.update(AskMarkdown("".join(accumulated)))
-    return "".join(accumulated)
+class AgentUI(Protocol):
+    """Everything the agent needs from the terminal, so core/ stays free of I/O."""
+
+    def stream(self, chunks: Iterable[str]) -> str: ...
+
+    def confirm(self, prompt: str, exact: str | None = None) -> bool: ...
+
+    def choose_recovery(self) -> str: ...
+
+    def info(self, message: str) -> None: ...
+
+    def warning(self, message: str) -> None: ...
+
+    def show_step(self, step: int, max_steps: int, command: str) -> None: ...
+
+    def show_output(self, output: str) -> None: ...
 
 
-def _error_recovery_choice() -> str:
-    """Ask the user whether to skip the failed step or abort. Returns 'skip' or 'abort'."""
-    output.console.print("[dim]  [s] Skip this step and continue  [a] Abort agent[/dim]")
-    try:
-        choice = input("Choice [s/a]: ").strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        return "abort"
-    return "skip" if choice == "s" else "abort"
+def _compose(base: str | None, agent_instructions: str) -> str:
+    # Agent instructions go last so they override the base prompt's response style
+    return f"{base}\n\n{agent_instructions}" if base else agent_instructions
 
 
 def run_agent(
@@ -63,84 +59,91 @@ def run_agent(
     base_system_prompt: str | None,
     max_steps: int,
     auto_approve: bool,
+    dry_run: bool,
+    think: bool | None,
     log_path: Path,
+    ui: AgentUI,
 ) -> None:
-    """Run the multi-step agent loop: plan, approve, execute, adapt."""
-    # Phase 1: generate the plan
-    plan_messages: list[dict[str, str]] = [{"role": "user", "content": f"Goal: {goal}"}]
-    render_info("Agent: generating plan…")
-    plan_text = _stream_to_text(provider, plan_messages, model, max_tokens, AGENT_PLAN_SYSTEM)
+    """Run the agent loop: plan, get approval, then execute and adapt step by step.
 
-    if not auto_approve and not confirm("Proceed with this plan? [y/N]: "):
-        render_info("Agent aborted.")
+    The plan always needs approval; --auto-approve only skips per-step confirmation
+    for non-destructive commands. Destructive commands always need the word "yes".
+    """
+    plan_system = _compose(base_system_prompt, AGENT_PLAN_SYSTEM)
+    exec_system = _compose(base_system_prompt, AGENT_EXEC_SYSTEM)
+
+    ui.info("Agent: generating plan…")
+    plan_messages = [{"role": "user", "content": f"Goal: {goal}"}]
+    plan_text = ui.stream(
+        provider.stream(plan_messages, model, max_tokens, plan_system, think=think)
+    )
+
+    if dry_run:
+        ui.info("Dry run — plan only, nothing executed.")
+        return
+    if not ui.confirm("Proceed with this plan? [y/N]: "):
+        ui.info("Agent aborted.")
         return
 
-    # Phase 2: execution loop
-    exec_messages: list[dict[str, str]] = [
-        {
-            "role": "user",
-            "content": f"Goal: {goal}\nPlan:\n{plan_text}\nBegin execution.",
-        }
+    exec_messages = [
+        {"role": "user", "content": f"Goal: {goal}\nPlan:\n{plan_text}\nBegin execution."}
     ]
 
     for step in range(1, max_steps + 1):
-        response = _stream_to_text(provider, exec_messages, model, max_tokens, AGENT_EXEC_SYSTEM)
+        response = ui.stream(
+            provider.stream(exec_messages, model, max_tokens, exec_system, think=think)
+        )
 
         if response.strip().upper() == "DONE":
-            render_info("Agent: task complete.")
-            break
+            ui.info("Agent: task complete.")
+            return
 
         command = extract_command(response)
         if command is None:
-            render_warning("No command found in agent response. Stopping.")
-            break
+            ui.warning("No command found in agent response. Stopping.")
+            return
 
-        output.console.print(
-            f"[bold]Step {step}/{max_steps}:[/bold] [cyan]{escape(command)}[/cyan]"
-        )
+        ui.show_step(step, max_steps, command)
 
-        # Confirmation logic
         if is_destructive(command):
-            render_warning("Destructive command — requires explicit confirmation.")
-            if not confirm("Type 'yes' to execute: ", exact="yes"):
-                exec_messages += [
-                    {"role": "assistant", "content": response},
-                    {"role": "user", "content": "Step skipped. Continue."},
-                ]
-                continue
-        elif not auto_approve:
-            if not confirm("Execute? [y/N]: "):
-                choice = _error_recovery_choice()
-                if choice == "abort":
-                    render_info("Agent aborted.")
-                    break
-                exec_messages += [
-                    {"role": "assistant", "content": response},
-                    {"role": "user", "content": "Step skipped. Continue."},
-                ]
-                continue
+            ui.warning("Destructive command — requires explicit confirmation.")
+            approved = ui.confirm("Type 'yes' to execute: ", exact="yes")
+        else:
+            approved = auto_approve or ui.confirm("Execute? [y/N]: ")
 
-        log_command(command, log_path)
-        command_output, exit_code = run_command_with_output(command)
-
-        if command_output:
-            output.console.print(f"[dim]{escape(command_output)}[/dim]")
-
-        if exit_code != 0:
-            render_warning(f"Command failed (exit {exit_code}).")
-            choice = _error_recovery_choice()
-            if choice == "abort":
-                render_info("Agent aborted.")
-                break
+        if not approved:
+            if ui.choose_recovery() == "abort":
+                ui.info("Agent aborted.")
+                return
             exec_messages += [
                 {"role": "assistant", "content": response},
-                {"role": "user", "content": f"Step failed: {command_output}. Skip and continue."},
+                {"role": "user", "content": "Step skipped. Continue."},
+            ]
+            continue
+
+        try:
+            log_command(command, log_path)
+        except StorageError as error:
+            ui.warning(str(error))
+        output, exit_code = run_command_with_output(command)
+        if output:
+            ui.show_output(output)
+        feedback = truncate_for_model(output)
+
+        if exit_code != 0:
+            ui.warning(f"Command failed (exit {exit_code}).")
+            if ui.choose_recovery() == "abort":
+                ui.info("Agent aborted.")
+                return
+            exec_messages += [
+                {"role": "assistant", "content": response},
+                {"role": "user", "content": f"Step failed: {feedback}\nSkip and continue."},
             ]
             continue
 
         exec_messages += [
             {"role": "assistant", "content": response},
-            {"role": "user", "content": f"Output (exit {exit_code}):\n{command_output}\nContinue."},
+            {"role": "user", "content": f"Output (exit {exit_code}):\n{feedback}\nContinue."},
         ]
-    else:
-        render_warning(f"Agent reached max steps ({max_steps}).")
+
+    ui.warning(f"Agent reached max steps ({max_steps}).")

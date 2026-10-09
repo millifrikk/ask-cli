@@ -48,6 +48,7 @@ from ask_cli.exceptions import (
     StorageError,
 )
 from ask_cli.output import (
+    ConsoleAgentUI,
     ResponseDisplay,
     confirm,
     copy_to_clipboard,
@@ -625,7 +626,7 @@ def _run(args: argparse.Namespace) -> int:
     )
 
     # Inject command-generation suffix when in cmd mode
-    cmd_mode = args.cmd or args.dry_run
+    cmd_mode = args.cmd or (args.dry_run and not args.agent)
     if cmd_mode:
         system_prompt = (
             f"{system_prompt}\n\n{CMD_SYSTEM_SUFFIX}" if system_prompt else CMD_SYSTEM_SUFFIX
@@ -645,7 +646,10 @@ def _run(args: argparse.Namespace) -> int:
             base_system_prompt=system_prompt,
             max_steps=args.agent_max_steps,
             auto_approve=args.auto_approve,
+            dry_run=args.dry_run,
+            think=False if args.quick else None,
             log_path=paths.commands_log,
+            ui=ConsoleAgentUI(),
         )
         return 0
 
