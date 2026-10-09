@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
 
+from ask_cli.core.fences import extract_code_blocks
 from ask_cli.core.storage import ensure_private_dir
 from ask_cli.exceptions import StorageError
 
@@ -72,25 +73,18 @@ DESTRUCTIVE_PATTERNS = [
 COMMAND_TIMEOUT_SECONDS = 120
 MAX_FEEDBACK_CHARS = 8000
 
-_FENCE_RE = re.compile(r"```(?:bash|sh|shell)?\n(.*?)```", re.DOTALL)
-_ANY_FENCE_RE = re.compile(r"```(?:\w+)?\n(.*?)```", re.DOTALL)
+_SHELL_LANGUAGES = frozenset({"", "bash", "sh", "shell", "zsh"})
 
 
 def extract_command(response: str) -> str | None:
-    """Extract the first shell command from a fenced code block.
+    """Return the first shell (or untagged) fenced block's content, or None.
 
-    Returns None if no fenced block is present — previously this fell back to
-    the last non-empty line, which could turn explanatory prose into a shell
-    command when the model didn't follow the CMD_SYSTEM_SUFFIX directive.
+    Deliberately never falls back to prose: if the model didn't follow
+    CMD_SYSTEM_SUFFIX, running a line of explanation as a command would be worse.
     """
-    if not response or not response.strip():
-        return None
-
-    match = _FENCE_RE.search(response)
-    if match:
-        command = match.group(1).strip()
-        return command if command else None
-
+    for language, code in extract_code_blocks(response):
+        if language.lower() in _SHELL_LANGUAGES and code.strip():
+            return code.strip()
     return None
 
 
@@ -129,8 +123,8 @@ def run_command(command: str) -> int:
 
 def extract_first_code_block(response: str) -> str | None:
     """Return content of the first fenced code block (any language), or None."""
-    match = _ANY_FENCE_RE.search(response)
-    return match.group(1).strip() if match else None
+    blocks = extract_code_blocks(response)
+    return blocks[0][1].strip() if blocks else None
 
 
 def run_command_with_output(

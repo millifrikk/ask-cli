@@ -278,3 +278,12 @@ def test_destructive_commands_are_flagged(command):
 )
 def test_read_only_commands_are_not_flagged(command):
     assert not is_destructive(command), command
+
+
+def test_extract_command_skips_non_shell_blocks():
+    response = "```python\nprint(1)\n```\nthen\n```bash\nls\n```"
+    assert extract_command(response) == "ls"
+
+
+def test_extract_first_code_block_handles_symbolic_language_tags():
+    assert extract_first_code_block("```c++\nint x;\n```") == "int x;"
