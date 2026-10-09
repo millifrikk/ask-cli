@@ -1,12 +1,12 @@
 """Single rich.Console instance and all rendering helpers for ask-cli."""
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from types import TracebackType
 
 import pyperclip
 from pygments.styles import get_style_by_name
 from pygments.util import ClassNotFound
-from rich.console import Console
+from rich.console import Console, ConsoleOptions, RenderableType
 from rich.live import Live
 from rich.markdown import CodeBlock, Markdown
 from rich.markup import escape
@@ -36,7 +36,9 @@ class PlainCodeBlock(CodeBlock):
     so triple-click grabs exactly the code.
     """
 
-    def __rich_console__(self, console, options):
+    def __rich_console__(
+        self, console: Console, options: ConsoleOptions
+    ) -> Iterator[RenderableType]:
         code = str(self.text).rstrip()
         yield Syntax(
             code,

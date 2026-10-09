@@ -37,7 +37,14 @@ line-length = 100
 target-version = "py311"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "SIM"]
+# T20: no print() (all output goes through output.py); BLE: no blind `except Exception`;
+# ANN: annotated signatures; ARG: unused arguments; S: bandit security checks;
+# RUF100: flag stale noqa comments.
+select = ["E", "F", "I", "UP", "B", "SIM", "T20", "BLE", "ANN", "ARG", "S", "RUF100"]
+
+[tool.ruff.lint.per-file-ignores]
+# pytest style: unannotated test functions/fixtures, bare asserts, unused fixture args
+"tests/**" = ["ANN", "ARG", "S"]
 
 [tool.ruff.format]
 quote-style = "double"
