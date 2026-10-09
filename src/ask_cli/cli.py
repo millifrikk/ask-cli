@@ -2,6 +2,7 @@
 
 import argparse
 import os
+import stat
 import sys
 from pathlib import Path
 
@@ -171,6 +172,18 @@ def _handle_list_models(provider_name: str, config: AppConfig) -> None:
         "smart": provider_config.smart_model,
     }
     render_model_list(provider_name, models)
+
+
+def _read_piped_stdin() -> str:
+    # Only read when stdin is a pipe or a redirected file. A TTY, /dev/null or an
+    # IDE's never-closed stdin (character device or socket) would block forever.
+    try:
+        mode = os.fstat(sys.stdin.fileno()).st_mode
+    except (AttributeError, OSError, ValueError):
+        return ""
+    if not (stat.S_ISFIFO(mode) or stat.S_ISREG(mode)):
+        return ""
+    return sys.stdin.read().strip()
 
 
 def _log_command_or_warn(command: str, log_path: Path) -> None:
@@ -459,16 +472,13 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
         return 0
 
     # Build the query from positional args and/or piped stdin
-    query_parts = list(args.query)
-    if not sys.stdin.isatty():
-        piped = sys.stdin.read().strip()
-        if piped:
-            query_parts.append(piped)
-    query = " ".join(query_parts).strip()
+    query_parts = [" ".join(args.query).strip(), _read_piped_stdin()]
+    query = "\n\n".join(part for part in query_parts if part)
 
     if not query:
-        parser.print_help()
-        return 0
+        parser.print_usage(sys.stderr)
+        render_error("No question given.", hint='Try: ask "your question"  (or ask --help)')
+        return 2
 
     if args.file or args.files:
         attachments = read_attachments(

@@ -162,14 +162,14 @@ def test_config_error_exits_with_code_1():
         assert main(["hello"]) == 1
 
 
-def test_no_query_exits_with_code_0(capsys):
-    with (
-        patch("ask_cli.cli.load_config", return_value=_make_config()),
-        patch("sys.stdin.isatty", return_value=True),
-    ):
+def test_no_query_prints_usage_to_stderr_and_exits_2(capsys):
+    with patch("ask_cli.cli.load_config", return_value=_make_config()):
         from ask_cli.cli import main
 
-        assert main([]) == 0
+        assert main([]) == 2
+    captured = capsys.readouterr()
+    assert "usage: ask" in captured.err
+    assert captured.out == ""
 
 
 def test_file_flag_prepends_to_query(tmp_path):
@@ -526,6 +526,59 @@ def test_cmd_with_piped_stdin_refuses_to_prompt(capsys):
     assert exit_code == 0
     run_command.assert_not_called()
     assert "not a terminal" in capsys.readouterr().err
+
+
+# --- piped stdin ---
+
+
+class TestReadPipedStdin:
+    def test_reads_from_a_pipe(self, monkeypatch):
+        import os
+
+        from ask_cli.cli import _read_piped_stdin
+
+        read_fd, write_fd = os.pipe()
+        os.write(write_fd, b"  log line\n")
+        os.close(write_fd)
+        with os.fdopen(read_fd) as pipe:
+            monkeypatch.setattr(sys, "stdin", pipe)
+            assert _read_piped_stdin() == "log line"
+
+    def test_reads_from_a_redirected_file(self, monkeypatch, tmp_path):
+        from ask_cli.cli import _read_piped_stdin
+
+        source = tmp_path / "input.txt"
+        source.write_text("from a file")
+        with source.open() as file:
+            monkeypatch.setattr(sys, "stdin", file)
+            assert _read_piped_stdin() == "from a file"
+
+    def test_ignores_character_devices_instead_of_blocking(self, monkeypatch):
+        from ask_cli.cli import _read_piped_stdin
+
+        # /dev/null stands in for a TTY or an IDE's never-closed stdin
+        with open("/dev/null") as device:
+            monkeypatch.setattr(sys, "stdin", device)
+            assert _read_piped_stdin() == ""
+
+    def test_missing_or_unusable_stdin_is_empty(self, monkeypatch):
+        from ask_cli.cli import _read_piped_stdin
+
+        monkeypatch.setattr(sys, "stdin", None)
+        assert _read_piped_stdin() == ""
+
+
+def test_piped_text_is_separated_from_the_question():
+    with (
+        patch("ask_cli.cli._read_piped_stdin", return_value="ERROR at line 3"),
+        patch("ask_cli.cli.load_config", return_value=_make_config()),
+        patch("ask_cli.cli.ConversationHistory"),
+        patch("ask_cli.cli.run_query", return_value="ok") as mock_run,
+    ):
+        from ask_cli.cli import main
+
+        main(["explain", "this"])
+    assert mock_run.call_args.kwargs["query"] == "explain this\n\nERROR at line 3"
 
 
 # --- json mode ---
