@@ -5,8 +5,8 @@ from collections.abc import Generator
 import openai
 
 from ask_cli.config import ProviderConfig
-from ask_cli.exceptions import ModelNotFoundError, ProviderError
 from ask_cli.providers.base import BaseProvider
+from ask_cli.providers.errors import openai_errors
 
 
 class OpenAIProvider(BaseProvider):
@@ -48,7 +48,7 @@ class OpenAIProvider(BaseProvider):
             if model.startswith(("gpt-5", "o1", "o3", "o4"))
             else "max_tokens"
         )
-        try:
+        with openai_errors(self.provider_id, self.display_name, model):
             stream = client.chat.completions.create(
                 model=model,
                 messages=all_messages,  # type: ignore[arg-type]
@@ -59,27 +59,3 @@ class OpenAIProvider(BaseProvider):
                 delta = chunk.choices[0].delta if chunk.choices else None
                 if delta is not None and delta.content is not None:
                     yield delta.content
-        except openai.AuthenticationError as e:
-            raise ProviderError(
-                "Authentication failed — check your OpenAI API key.",
-                provider="openai",
-                status_code=401,
-            ) from e
-        except openai.RateLimitError as e:
-            raise ProviderError(
-                "Rate limit exceeded — slow down requests or upgrade your plan.",
-                provider="openai",
-                status_code=429,
-            ) from e
-        except openai.NotFoundError as e:
-            raise ModelNotFoundError(
-                f"Model '{model}' not found on OpenAI.",
-                provider="openai",
-                status_code=404,
-            ) from e
-        except openai.APIError as e:
-            raise ProviderError(
-                f"OpenAI API error: {e}",
-                provider="openai",
-                status_code=getattr(e, "status_code", None),
-            ) from e

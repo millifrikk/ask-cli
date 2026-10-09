@@ -5,8 +5,8 @@ from collections.abc import Generator
 import anthropic
 
 from ask_cli.config import ProviderConfig
-from ask_cli.exceptions import ModelNotFoundError, ProviderError
 from ask_cli.providers.base import BaseProvider
+from ask_cli.providers.errors import anthropic_errors
 
 
 class AnthropicProvider(BaseProvider):
@@ -46,30 +46,8 @@ class AnthropicProvider(BaseProvider):
         if system_prompt:
             kwargs["system"] = system_prompt
 
-        try:
-            with client.messages.stream(**kwargs) as stream:
-                yield from stream.text_stream
-        except anthropic.AuthenticationError as e:
-            raise ProviderError(
-                "Authentication failed — check your Anthropic API key.",
-                provider="anthropic",
-                status_code=401,
-            ) from e
-        except anthropic.RateLimitError as e:
-            raise ProviderError(
-                "Rate limit exceeded — slow down requests or upgrade your plan.",
-                provider="anthropic",
-                status_code=429,
-            ) from e
-        except anthropic.NotFoundError as e:
-            raise ModelNotFoundError(
-                f"Model '{model}' not found on Anthropic.",
-                provider="anthropic",
-                status_code=404,
-            ) from e
-        except anthropic.APIError as e:
-            raise ProviderError(
-                f"Anthropic API error: {e}",
-                provider="anthropic",
-                status_code=getattr(e, "status_code", None),
-            ) from e
+        with (
+            anthropic_errors(self.provider_id, self.display_name, model),
+            client.messages.stream(**kwargs) as stream,
+        ):
+            yield from stream.text_stream

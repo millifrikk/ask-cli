@@ -5,8 +5,8 @@ from collections.abc import Generator
 import openai
 
 from ask_cli.config import ProviderConfig
-from ask_cli.exceptions import ModelNotFoundError, ProviderError
 from ask_cli.providers.base import BaseProvider
+from ask_cli.providers.errors import openai_errors
 
 
 class OllamaProvider(BaseProvider):
@@ -50,7 +50,13 @@ class OllamaProvider(BaseProvider):
         # reasoning models (Qwen3.5, DeepSeek-R1, …). Passing None skips it.
         extra_body = {"think": think} if think is not None else None
 
-        try:
+        with openai_errors(
+            self.provider_id,
+            self.display_name,
+            model,
+            unreachable_hint="Is Ollama running? Start it with `ollama serve`.",
+            not_found_hint=f"Download it with `ollama pull {model}`.",
+        ):
             stream = client.chat.completions.create(
                 model=model,
                 max_tokens=max_tokens,
@@ -62,20 +68,3 @@ class OllamaProvider(BaseProvider):
                 delta = chunk.choices[0].delta if chunk.choices else None
                 if delta is not None and delta.content is not None:
                     yield delta.content
-        except openai.APIConnectionError as e:
-            raise ProviderError(
-                "Cannot connect to Ollama. Is Ollama running? Try: ollama serve",
-                provider="ollama",
-            ) from e
-        except openai.NotFoundError as e:
-            raise ModelNotFoundError(
-                f"Model '{model}' not found in Ollama. Try: ollama pull {model}",
-                provider="ollama",
-                status_code=404,
-            ) from e
-        except openai.APIError as e:
-            raise ProviderError(
-                f"Ollama API error: {e}",
-                provider="ollama",
-                status_code=getattr(e, "status_code", None),
-            ) from e

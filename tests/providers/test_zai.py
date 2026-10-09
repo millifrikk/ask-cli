@@ -125,3 +125,16 @@ def test_is_configured_true_with_key(zai_config):
 
 def test_is_configured_false_without_key():
     assert ZaiProvider(ProviderConfig()).is_configured() is False
+
+
+def test_connection_drop_mid_stream_is_a_provider_error(http_client):
+    from tests.providers.conftest import anthropic_sse, broken_sse_response
+
+    provider = ZaiProvider(ProviderConfig(api_key="k", base_url="https://api.z.ai/api/anthropic"))
+    provider._client = anthropic.Anthropic(
+        api_key="k",
+        http_client=http_client(lambda request: broken_sse_response(anthropic_sse("Hi"))),
+        max_retries=0,
+    )
+    with pytest.raises(ProviderError, match="lost"):
+        list(provider.stream([{"role": "user", "content": "hi"}], "m", 100))
