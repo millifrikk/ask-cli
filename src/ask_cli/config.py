@@ -4,10 +4,10 @@ import contextlib
 import copy
 import json
 import os
-import stat
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import NoReturn
+from urllib.parse import urlparse
 
 from ask_cli.core.storage import read_json_object, write_private_json
 from ask_cli.exceptions import ConfigError, StorageError
@@ -204,6 +204,8 @@ class AppConfig:
     defaults: DefaultsConfig = field(default_factory=DefaultsConfig)
     features: FeaturesConfig = field(default_factory=FeaturesConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
+    # Problems worth telling the user about that don't stop ask from running
+    warnings: list[str] = field(default_factory=list)
 
 
 def _deep_merge(base: dict, override: dict) -> dict:
@@ -223,16 +225,6 @@ def _write_default_config(path: Path) -> None:
         write_private_json(path, DEFAULT_CONFIG)
     except StorageError as e:
         raise ConfigError(f"Cannot create default config: {e}") from e
-
-
-def _check_permissions(path: Path) -> None:
-    """Warn (not error) if config file is group/other readable."""
-    file_stat = path.stat()
-    if file_stat.st_mode & (stat.S_IRGRP | stat.S_IROTH):
-        # Import here to avoid circular import at module load time
-        from ask_cli.output import render_warning
-
-        render_warning(f"Config file {path} is readable by group/others. Run: chmod 600 {path}")
 
 
 def _migrate_permissions(paths: AppPaths) -> None:
@@ -272,33 +264,33 @@ def _apply_env_overrides(raw: dict) -> dict:
     return raw
 
 
-def _validate_base_url(provider_name: str, base_url: str) -> None:
-    """Warn if base_url scheme is unusual — an attacker-controlled URL would exfiltrate the API key.
+_LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 
-    Accepts https:// (any host) and http:// only for localhost / 127.0.0.1.
+
+def _base_url_warning(provider_name: str, base_url: str, has_api_key: bool) -> str | None:
+    """Warn when an API key would travel unencrypted or to an unexpected scheme.
+
+    https:// is fine anywhere; plain http:// only to this machine — or anywhere when
+    there's no key to leak (e.g. Ollama on another LAN host).
     """
     if not base_url:
-        return
-    from ask_cli.output import render_warning
-
-    lowered = base_url.lower()
-    if lowered.startswith("https://"):
-        return
-    if lowered.startswith(("http://localhost", "http://127.0.0.1", "http://[::1]")):
-        return
-    render_warning(
-        f"Provider '{provider_name}' base_url is '{base_url}' — unencrypted or non-localhost "
-        "URLs can leak your API key. Use https:// or http://localhost."
+        return None
+    parsed = urlparse(base_url)
+    scheme = parsed.scheme.lower()
+    if scheme == "https":
+        return None
+    if scheme == "http" and (parsed.hostname in _LOCAL_HOSTS or not has_api_key):
+        return None
+    return (
+        f"Provider '{provider_name}' base_url is '{base_url}' — unencrypted or non-local "
+        "URLs can leak your API key. Use https://, or http://localhost for local servers."
     )
 
 
-def _parse_provider_config(data: dict, provider_name: str = "") -> ProviderConfig:
-    base_url = data.get("base_url", "")
-    if provider_name:
-        _validate_base_url(provider_name, base_url)
+def _parse_provider_config(data: dict) -> ProviderConfig:
     return ProviderConfig(
         api_key=data.get("api_key", ""),
-        base_url=base_url,
+        base_url=data.get("base_url", ""),
         default_model=data.get("default_model", ""),
         fast_model=data.get("fast_model", ""),
         smart_model=data.get("smart_model", ""),
@@ -374,10 +366,9 @@ def load_config(paths: AppPaths) -> AppConfig:
     _migrate_permissions(paths)
     config_path = paths.config_file
 
+    # _migrate_permissions has already tightened an existing file to 0600
     if not config_path.exists():
         _write_default_config(config_path)
-    else:
-        _check_permissions(config_path)
 
     try:
         raw = json.loads(config_path.read_text(encoding="utf-8"))
@@ -391,9 +382,14 @@ def load_config(paths: AppPaths) -> AppConfig:
     merged = _apply_env_overrides(merged)
 
     providers = {
-        name: _parse_provider_config(provider_data, provider_name=name)
+        name: _parse_provider_config(provider_data)
         for name, provider_data in merged.get("providers", {}).items()
     }
+    warnings = [
+        warning
+        for name, provider in providers.items()
+        if (warning := _base_url_warning(name, provider.base_url, bool(provider.api_key)))
+    ]
 
     defaults_data = merged.get("defaults", {})
     features_data = merged.get("features", {})
@@ -411,6 +407,7 @@ def load_config(paths: AppPaths) -> AppConfig:
         ),
         features=FeaturesConfig(clipboard=features_data.get("clipboard", True)),
         output=OutputConfig(code_theme=output_data.get("code_theme", "monokai")),
+        warnings=warnings,
     )
 
 

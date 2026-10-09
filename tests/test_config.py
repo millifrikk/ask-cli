@@ -10,8 +10,8 @@ import pytest
 from ask_cli.config import (
     AppConfig,
     AppPaths,
+    _base_url_warning,
     _deep_merge,
-    _validate_base_url,
     api_key_env_var,
     load_config,
     resolve_model,
@@ -145,40 +145,48 @@ def test_default_config_includes_windows_system_prompt(tmp_path):
     assert "WSL" in config.defaults.system_prompt_windows
 
 
-def test_base_url_https_no_warning():
-    with patch("ask_cli.output.render_warning") as mock_warn:
-        _validate_base_url("zai", "https://api.z.ai/api/anthropic")
-        mock_warn.assert_not_called()
+@pytest.mark.parametrize(
+    "url",
+    [
+        "",
+        "https://api.z.ai/api/anthropic",
+        "http://localhost:11434",
+        "http://127.0.0.1:11434",
+        "http://[::1]:11434",
+        "HTTP://LOCALHOST:11434",
+    ],
+)
+def test_safe_base_urls_produce_no_warning(url):
+    assert _base_url_warning("zai", url, has_api_key=True) is None
 
 
-def test_base_url_localhost_no_warning():
-    with patch("ask_cli.output.render_warning") as mock_warn:
-        _validate_base_url("ollama", "http://localhost:11434")
-        mock_warn.assert_not_called()
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://attacker.example.com/api",
+        "ftp://api.example.com",
+        "http://localhost.evil.com",
+        "http://localhost@evil.com/",
+        "http://127.0.0.1.nip.io",
+        "localhost:11434",
+    ],
+)
+def test_risky_base_urls_warn_when_a_key_would_be_sent(url):
+    warning = _base_url_warning("zai", url, has_api_key=True)
+    assert warning is not None
+    assert url in warning
 
 
-def test_base_url_127_no_warning():
-    with patch("ask_cli.output.render_warning") as mock_warn:
-        _validate_base_url("ollama", "http://127.0.0.1:11434")
-        mock_warn.assert_not_called()
+def test_plain_http_on_lan_is_fine_without_an_api_key():
+    assert _base_url_warning("ollama", "http://192.168.1.20:11434", has_api_key=False) is None
 
 
-def test_base_url_empty_no_warning():
-    with patch("ask_cli.output.render_warning") as mock_warn:
-        _validate_base_url("anthropic", "")
-        mock_warn.assert_not_called()
-
-
-def test_base_url_plain_http_warns():
-    with patch("ask_cli.output.render_warning") as mock_warn:
-        _validate_base_url("zai", "http://attacker.example.com/api")
-        mock_warn.assert_called_once()
-
-
-def test_base_url_weird_scheme_warns():
-    with patch("ask_cli.output.render_warning") as mock_warn:
-        _validate_base_url("zai", "ftp://api.example.com")
-        mock_warn.assert_called_once()
+def test_config_warnings_are_returned_not_printed(tmp_path, capsys):
+    config_file = {"providers": {"zai": {"api_key": "k", "base_url": "http://evil.example"}}}
+    (tmp_path / "config.json").write_text(json.dumps(config_file))
+    config = load_config(_paths(tmp_path))
+    assert any("evil.example" in warning for warning in config.warnings)
+    assert capsys.readouterr().err == ""
 
 
 class TestMigratePermissions:

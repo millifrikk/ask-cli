@@ -1036,3 +1036,17 @@ def test_configured_code_theme_is_applied():
     ):
         assert main(["hello"]) == 0
     set_code_theme.assert_called_once_with("dracula")
+
+
+def test_config_warnings_are_rendered(capsys):
+    from ask_cli.cli import main
+
+    config = _make_config()
+    config.warnings.append("Provider 'zai' base_url is risky.")
+    with (
+        patch("ask_cli.cli.load_config", return_value=config),
+        patch("ask_cli.cli.ConversationHistory"),
+        patch("ask_cli.cli.run_query", return_value="ok"),
+    ):
+        assert main(["hello"]) == 0
+    assert "base_url is risky" in capsys.readouterr().err

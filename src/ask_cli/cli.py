@@ -401,6 +401,8 @@ def _run(args: argparse.Namespace) -> int:
     paths = resolve_paths()
     config = load_config(paths)
     set_code_theme(config.output.code_theme)
+    for warning in config.warnings:
+        render_warning(warning)
     provider_name = args.provider or config.default_provider
 
     if any(getattr(args, flag) for flag in MANAGEMENT_FLAGS):
