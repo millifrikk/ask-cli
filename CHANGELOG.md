@@ -6,6 +6,35 @@ follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.3.6] — 2026-10-09
+
+### Fixed
+- **Piped and redirected output is written verbatim.** When stdout is not a
+  terminal, responses were rendered by Rich at 80 columns: long lines got hard
+  newlines (breaking `ask --json … | jq` and `ask --code-only … > script.py`),
+  lines were space-padded with no trailing newline, and `--markdown > file.md`
+  wrote rendered text instead of Markdown. Now plain/markdown/raw output streams
+  the model's text unchanged, `--code-only` writes only the code blocks, and
+  `--recall` is verbatim too.
+- **`--json` asks for JSON.** It previously behaved exactly like `--raw`. JSON
+  mode now adds a JSON-only system instruction, strips a single surrounding
+  code fence when piped, and warns on stderr if the response doesn't parse.
+- **`--no-color` removes all colour.** The response kept its colours (the
+  streaming code held a stale console), and errors printed literal
+  `[bold red]` tags. Both are fixed.
+- **Diagnostics go to stderr.** Errors, warnings, the "Saved response" and
+  "copied to clipboard" notices no longer end up inside piped stdout.
+- Error, warning and info messages escape Rich markup, so a path like
+  `app/[slug]/page.tsx` keeps its brackets and a stray `[/red]` in a provider
+  error no longer crashes the error renderer.
+- `--list-models` stars only the default tier instead of every tier sharing
+  the default model id.
+
+### Changed
+- Response rendering moved from `core/conversation.py` into
+  `output.ResponseDisplay`; `run_query` now streams chunks to a callback.
+  Fenced-code parsing lives in `core/fences.py` and handles tags like `c++`.
+
 ## [2.3.5] — 2026-10-09
 
 ### Security
@@ -197,7 +226,8 @@ follows [SemVer](https://semver.org/).
   OpenAI, Google Gemini, Ollama), streaming, domain modes, conversation
   history, save/recall, agent mode, and XDG-compliant config.
 
-[Unreleased]: https://github.com/millifrikk/ask-cli/compare/v2.3.5...HEAD
+[Unreleased]: https://github.com/millifrikk/ask-cli/compare/v2.3.6...HEAD
+[2.3.6]: https://github.com/millifrikk/ask-cli/compare/v2.3.5...v2.3.6
 [2.3.5]: https://github.com/millifrikk/ask-cli/compare/v2.3.4...v2.3.5
 [2.3.4]: https://github.com/millifrikk/ask-cli/compare/v2.3.3...v2.3.4
 [2.3.3]: https://github.com/millifrikk/ask-cli/compare/v2.3.2...v2.3.3
