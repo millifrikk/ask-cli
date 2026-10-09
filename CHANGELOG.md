@@ -6,6 +6,34 @@ follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.4.1] — 2026-10-09
+
+### Fixed
+- The `base_url` safety warning compared string prefixes, so
+  `http://localhost.evil.com`, `http://localhost@evil.com` and
+  `http://127.0.0.1.nip.io` counted as local. It now checks the parsed
+  hostname, and no longer warns about plain `http://` to a LAN host when the
+  provider has no API key to leak (e.g. Ollama on another machine).
+- `output.code_theme` is now applied to all code blocks (it was ignored); an
+  unknown theme is reported as a config error instead of crashing mid-render.
+- WSL context detection treats clustered shell options (`bash -lc`,
+  `zsh -ic`) as a command-string launcher, keeping the Windows prompt there.
+- OpenAI requests always use `max_completion_tokens` (`max_tokens` is
+  deprecated by OpenAI), so new model families no longer risk a 400.
+- A non-shell code block before the command no longer hides it from `--cmd`.
+
+### Changed
+- Removed config options that never did anything: `offline_fallback`,
+  `output.markdown`, `features.syntax_highlighting`. Existing config files
+  that contain them still load.
+- Usage stats label `cmd`, `quick` and `agent` runs (agent runs weren't
+  recorded before).
+- Internal: `cli.py` is back to parsing and dispatch (provider registry,
+  context detection, `--cmd` flow and config editing moved to their own
+  modules); Z.ai and Ollama now subclass the Anthropic and OpenAI providers;
+  one fence parser; config and `core/` never print. `pygments` is declared as
+  a direct dependency (already required by `rich`).
+
 ## [2.4.0] — 2026-10-09
 
 ### Added
@@ -321,7 +349,8 @@ follows [SemVer](https://semver.org/).
   OpenAI, Google Gemini, Ollama), streaming, domain modes, conversation
   history, save/recall, agent mode, and XDG-compliant config.
 
-[Unreleased]: https://github.com/millifrikk/ask-cli/compare/v2.4.0...HEAD
+[Unreleased]: https://github.com/millifrikk/ask-cli/compare/v2.4.1...HEAD
+[2.4.1]: https://github.com/millifrikk/ask-cli/compare/v2.4.0...v2.4.1
 [2.4.0]: https://github.com/millifrikk/ask-cli/compare/v2.3.7...v2.4.0
 [2.3.7]: https://github.com/millifrikk/ask-cli/compare/v2.3.6...v2.3.7
 [2.3.6]: https://github.com/millifrikk/ask-cli/compare/v2.3.5...v2.3.6
