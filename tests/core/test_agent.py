@@ -93,10 +93,10 @@ def test_agent_auto_approve_skips_confirm(tmp_path):
         patch("ask_cli.core.agent.render_warning"),
         patch("ask_cli.core.agent.run_command_with_output", return_value=("hi", 0)),
         patch("ask_cli.core.agent.log_command"),
-        patch("ask_cli.core.agent._confirm") as mock_confirm,
+        patch("ask_cli.core.agent.confirm") as mock_confirm,
     ):
         _run_agent_auto(provider, log_path=tmp_path / "log.txt")
-    # auto_approve=True should never call _confirm for non-destructive commands
+    # auto_approve=True should never call confirm for non-destructive commands
     mock_confirm.assert_not_called()
 
 
@@ -108,11 +108,25 @@ def test_agent_destructive_requires_confirm_even_with_auto_approve(tmp_path):
         patch("ask_cli.core.agent.render_warning"),
         patch("ask_cli.core.agent.run_command_with_output", return_value=("", 0)),
         patch("ask_cli.core.agent.log_command"),
-        patch("ask_cli.core.agent._confirm", return_value=True) as mock_confirm,
+        patch("ask_cli.core.agent.confirm", return_value=True) as mock_confirm,
     ):
         _run_agent_auto(provider, log_path=tmp_path / "log.txt")
-    # _confirm must be called at least once for the destructive command
+    # confirm must be called for the destructive command, demanding the exact word
     mock_confirm.assert_called()
+    assert mock_confirm.call_args.kwargs.get("exact") == "yes"
+
+
+def test_agent_destructive_command_not_run_on_plain_y(tmp_path):
+    provider = _make_provider("1. rm /tmp/x", "```bash\nrm /tmp/x\n```", "DONE")
+    with (
+        patch("ask_cli.core.agent.render_info"),
+        patch("ask_cli.core.agent.render_warning"),
+        patch("ask_cli.core.agent.run_command_with_output", return_value=("", 0)) as run,
+        patch("ask_cli.core.agent.log_command"),
+        patch("builtins.input", return_value="y"),
+    ):
+        _run_agent_auto(provider, log_path=tmp_path / "log.txt")
+    run.assert_not_called()
 
 
 def test_run_command_with_output_captures_stdout():

@@ -479,6 +479,55 @@ def test_command_log_failure_warns_and_still_runs(capsys):
     assert "Command not logged" in capsys.readouterr().err
 
 
+# --- --cmd confirmation ---
+
+
+def _run_cmd(argv: list[str], response: str, answer: str | type[BaseException], tty: bool = True):
+    from ask_cli.cli import main
+
+    input_mock = (
+        patch("builtins.input", side_effect=answer)
+        if isinstance(answer, type)
+        else patch("builtins.input", return_value=answer)
+    )
+    with (
+        patch("ask_cli.cli.load_config", return_value=_make_config()),
+        patch("sys.stdin.isatty", return_value=tty),
+        patch("sys.stdin.read", return_value=""),
+        patch("ask_cli.cli.ConversationHistory"),
+        patch("ask_cli.cli.run_query", return_value=response),
+        patch("ask_cli.cli.log_command"),
+        patch("ask_cli.cli.run_command", return_value=0) as run_command,
+        input_mock,
+    ):
+        exit_code = main(argv)
+    return exit_code, run_command
+
+
+def test_cmd_runs_after_y():
+    exit_code, run_command = _run_cmd(["--cmd", "list"], "```bash\nls\n```", "y")
+    assert exit_code == 0
+    run_command.assert_called_once_with("ls")
+
+
+def test_cmd_destructive_needs_exact_yes():
+    _, run_command = _run_cmd(["--cmd", "clean"], "```bash\nrm -rf build\n```", "y")
+    run_command.assert_not_called()
+
+
+def test_cmd_eof_at_prompt_is_a_no_not_a_traceback():
+    exit_code, run_command = _run_cmd(["--cmd", "list"], "```bash\nls\n```", EOFError)
+    assert exit_code == 0
+    run_command.assert_not_called()
+
+
+def test_cmd_with_piped_stdin_refuses_to_prompt(capsys):
+    exit_code, run_command = _run_cmd(["--cmd", "list"], "```bash\nls\n```", EOFError, tty=False)
+    assert exit_code == 0
+    run_command.assert_not_called()
+    assert "not a terminal" in capsys.readouterr().err
+
+
 # --- json mode ---
 
 

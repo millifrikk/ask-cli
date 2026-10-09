@@ -179,6 +179,19 @@ def render_info(message: str) -> None:
     err_console.print(f"[dim]{escape(message)}[/dim]")
 
 
+def confirm(prompt: str, exact: str | None = None) -> bool:
+    """Ask on stderr. With `exact`, only that word (any case) confirms; otherwise y/yes.
+    End-of-input or Ctrl+C counts as no."""
+    try:
+        answer = err_console.input(escape(prompt)).strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        err_console.print()
+        return False
+    if exact is not None:
+        return answer == exact.lower()
+    return answer in ("y", "yes")
+
+
 def _sanitize_for_clipboard(text: str) -> str:
     # Trailing \n auto-executes on paste into a shell prompt; \r can hide
     # content from the pre-paste preview on some terminals.

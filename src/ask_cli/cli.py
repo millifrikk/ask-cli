@@ -42,6 +42,7 @@ from ask_cli.exceptions import (
 )
 from ask_cli.output import (
     ResponseDisplay,
+    confirm,
     copy_to_clipboard,
     disable_color,
     render_error,
@@ -573,14 +574,21 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
             exit_code = run_command(command)
             if exit_code != 0:
                 render_warning(f"Command exited with code {exit_code}.")
+        elif not sys.stdin.isatty():
+            # Piped input means there is nobody to answer a prompt
+            render_warning(
+                "Not executing: stdin is not a terminal, so confirmation can't be asked. "
+                "The command was printed above; run it yourself."
+            )
         else:
-            if is_destructive(command):
+            destructive = is_destructive(command)
+            if destructive:
                 render_warning("Destructive command detected — confirmation required.")
-                confirmation = input("Type 'yes' to execute: ").strip().lower()
-                confirmed = confirmation == "yes"
-            else:
-                answer = input("Execute this command? [y/N]: ").strip().lower()
-                confirmed = answer in ("y", "yes")
+            confirmed = (
+                confirm("Type 'yes' to execute: ", exact="yes")
+                if destructive
+                else confirm("Execute this command? [y/N]: ")
+            )
             if confirmed:
                 _log_command_or_warn(command, paths.commands_log)
                 run_command(command)

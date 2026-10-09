@@ -12,7 +12,7 @@ from ask_cli.core.commands import (
     log_command,
     run_command_with_output,
 )
-from ask_cli.output import AskMarkdown, render_info, render_warning
+from ask_cli.output import AskMarkdown, confirm, render_info, render_warning
 from ask_cli.providers.base import BaseProvider
 
 AGENT_PLAN_SYSTEM = (
@@ -44,15 +44,6 @@ def _stream_to_text(
     return "".join(accumulated)
 
 
-def _confirm(prompt: str) -> bool:
-    """Prompt user on stdin, return True if they answered y/yes."""
-    try:
-        answer = input(prompt).strip().lower()
-        return answer in ("y", "yes")
-    except (EOFError, KeyboardInterrupt):
-        return False
-
-
 def _error_recovery_choice() -> str:
     """Ask the user whether to skip the failed step or abort. Returns 'skip' or 'abort'."""
     output.console.print("[dim]  [s] Skip this step and continue  [a] Abort agent[/dim]")
@@ -80,7 +71,7 @@ def run_agent(
     render_info("Agent: generating plan…")
     plan_text = _stream_to_text(provider, plan_messages, model, max_tokens, AGENT_PLAN_SYSTEM)
 
-    if not auto_approve and not _confirm("Proceed with this plan? [y/N]: "):
+    if not auto_approve and not confirm("Proceed with this plan? [y/N]: "):
         render_info("Agent aborted.")
         return
 
@@ -111,14 +102,14 @@ def run_agent(
         # Confirmation logic
         if is_destructive(command):
             render_warning("Destructive command — requires explicit confirmation.")
-            if not _confirm("Type 'yes' to execute: "):
+            if not confirm("Type 'yes' to execute: ", exact="yes"):
                 exec_messages += [
                     {"role": "assistant", "content": response},
                     {"role": "user", "content": "Step skipped. Continue."},
                 ]
                 continue
         elif not auto_approve:
-            if not _confirm("Execute? [y/N]: "):
+            if not confirm("Execute? [y/N]: "):
                 choice = _error_recovery_choice()
                 if choice == "abort":
                     render_info("Agent aborted.")

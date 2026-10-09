@@ -177,6 +177,30 @@ class TestResponseDisplayTerminal:
         render_code.assert_called_once_with("print(1)", language="python")
 
 
+class TestConfirm:
+    @pytest.mark.parametrize(("answer", "expected"), [("y", True), ("YES", True), ("", False)])
+    def test_yes_no_answers(self, answer, expected):
+        with patch("builtins.input", return_value=answer):
+            assert output.confirm("Execute? [y/N]: ") is expected
+
+    @pytest.mark.parametrize(("answer", "expected"), [("y", False), ("yes", True), ("Yes", True)])
+    def test_exact_word_required(self, answer, expected):
+        with patch("builtins.input", return_value=answer):
+            assert output.confirm("Type 'yes' to execute: ", exact="yes") is expected
+
+    @pytest.mark.parametrize("interrupt", [EOFError, KeyboardInterrupt])
+    def test_eof_or_ctrl_c_means_no(self, interrupt):
+        with patch("builtins.input", side_effect=interrupt):
+            assert output.confirm("Execute? [y/N]: ") is False
+
+    def test_prompt_goes_to_stderr(self, capsys):
+        with patch("builtins.input", return_value="n"):
+            output.confirm("Execute? [y/N]: ")
+        captured = capsys.readouterr()
+        assert "Execute?" in captured.err
+        assert captured.out == ""
+
+
 class TestDisableColor:
     def test_errors_have_no_ansi_and_no_literal_markup(self, monkeypatch, capsys):
         # Simulate a colour terminal so the test fails if colour survives --no-color
