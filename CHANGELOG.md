@@ -6,6 +6,51 @@ follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.3.7] — 2026-10-09
+
+### Fixed
+- **No more tracebacks.** Every ask-cli error now goes through one handler
+  that prints the problem plus an actionable hint and exits 1; Ctrl+C exits
+  130 (the partial answer is still saved to history). Previously a corrupt
+  `history.json` with `-c`, any provider error in `--agent` mode, a dropped
+  connection mid-answer, piped stdin with `--cmd`, unreadable attachments and
+  wrongly-shaped config files all crashed with a Python traceback.
+- **Dropped connections and network failures** (mid-stream resets, timeouts,
+  unreachable hosts) are reported per provider; Ollama no longer says "is it
+  running?" when a request merely timed out. Gemini errors map to auth / rate
+  limit / model-not-found instead of a catch-all.
+- **Actionable messages.** A missing key names the exact env var and config
+  key; an unknown model suggests `ask -p <provider> --list-models`; invalid
+  config says which key is wrong and warns not to delete a file that holds
+  API keys.
+- **State files are written atomically** (temp file + rename, created 0600),
+  so Ctrl+C or two concurrent runs can't corrupt history, stats, saved
+  responses or the config. Corrupt files are reported with a fix
+  (`ask --clear`, `ask --stats-reset`) instead of crashing; `--list-saved`
+  shows unreadable entries instead of hiding them.
+- **Errors are no longer swallowed.** Failing to write stats or the command
+  log now warns (the answer is kept); `--stats-reset` no longer claims
+  success on failure; an empty, filtered or token-limit-truncated response
+  is reported instead of exiting silently.
+- **Attachments:** permission errors and directories get clear messages; only
+  `--max-file-size` bytes are read (a huge log isn't loaded into memory);
+  files named twice are included once; blocks are labelled by path; content
+  containing triple backticks gets a longer fence.
+- **stdin:** only read from a pipe or file, fixing a hang when launched with
+  a never-closing stdin (IDE tasks, some `wsl.exe` launchers); piped text is
+  joined to the question with a blank line; no question → usage on stderr
+  and exit 2.
+- `--cmd` with piped stdin refuses to prompt instead of crashing; the agent's
+  destructive-command prompt now requires the exact word `yes` (it accepted
+  `y`); command failures after confirmation are reported.
+- `--save` validates the name before calling the model and exits 1 if saving
+  fails; `-c` says when it starts a new conversation because history expired.
+
+### Changed
+- `main()` is now `main(argv) -> int` (the `ask` entry point is unchanged).
+- `httpx` is declared as a direct dependency (it was already installed
+  transitively via the provider SDKs).
+
 ## [2.3.6] — 2026-10-09
 
 ### Fixed
@@ -226,7 +271,8 @@ follows [SemVer](https://semver.org/).
   OpenAI, Google Gemini, Ollama), streaming, domain modes, conversation
   history, save/recall, agent mode, and XDG-compliant config.
 
-[Unreleased]: https://github.com/millifrikk/ask-cli/compare/v2.3.6...HEAD
+[Unreleased]: https://github.com/millifrikk/ask-cli/compare/v2.3.7...HEAD
+[2.3.7]: https://github.com/millifrikk/ask-cli/compare/v2.3.6...v2.3.7
 [2.3.6]: https://github.com/millifrikk/ask-cli/compare/v2.3.5...v2.3.6
 [2.3.5]: https://github.com/millifrikk/ask-cli/compare/v2.3.4...v2.3.5
 [2.3.4]: https://github.com/millifrikk/ask-cli/compare/v2.3.3...v2.3.4
