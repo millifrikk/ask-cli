@@ -8,7 +8,8 @@ import stat
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ask_cli.exceptions import ConfigError
+from ask_cli.core.storage import write_private_json
+from ask_cli.exceptions import ConfigError, StorageError
 
 
 @dataclass(frozen=True)
@@ -231,17 +232,11 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return result
 
 
-def _ensure_private_dir(path: Path) -> None:
-    """Create path and chmod 0o700 so other local users cannot enumerate its contents."""
-    path.mkdir(parents=True, exist_ok=True)
-    with contextlib.suppress(OSError):
-        path.chmod(0o700)
-
-
 def _write_default_config(path: Path) -> None:
-    _ensure_private_dir(path.parent)
-    path.write_text(json.dumps(DEFAULT_CONFIG, indent=2))
-    path.chmod(0o600)
+    try:
+        write_private_json(path, DEFAULT_CONFIG)
+    except StorageError as e:
+        raise ConfigError(f"Cannot create default config: {e}") from e
 
 
 def _check_permissions(path: Path) -> None:

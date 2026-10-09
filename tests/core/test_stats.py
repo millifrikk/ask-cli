@@ -70,3 +70,35 @@ def test_reset_writes_empty(tmp_path):
     assert stats["total_queries"] == 0
     assert stats["input_chars"] == 0
     assert stats["queries_by_mode"] == {}
+
+
+def test_corrupt_stats_raise_storage_error_with_reset_hint(tmp_path):
+    import pytest
+
+    from ask_cli.exceptions import StorageError
+
+    path = tmp_path / "stats.json"
+    path.write_text("[]")
+    with pytest.raises(StorageError) as exc_info:
+        load_stats(path)
+    assert "ask --stats-reset" in exc_info.value.hint
+    with pytest.raises(StorageError):
+        record_query(path, "default", 1, 1)
+
+
+def test_reset_failure_is_reported(tmp_path):
+    import pytest
+
+    from ask_cli.exceptions import StorageError
+
+    blocker = tmp_path / "file"
+    blocker.write_text("")
+    with pytest.raises(StorageError):
+        reset_stats(blocker / "stats.json")
+
+
+def test_reset_repairs_corrupt_file(tmp_path):
+    path = tmp_path / "stats.json"
+    path.write_text("{broken")
+    reset_stats(path)
+    assert load_stats(path)["total_queries"] == 0

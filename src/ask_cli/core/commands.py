@@ -2,7 +2,11 @@
 
 import re
 import subprocess
+from datetime import UTC, datetime
 from pathlib import Path
+
+from ask_cli.core.storage import ensure_private_dir
+from ask_cli.exceptions import StorageError
 
 CMD_SYSTEM_SUFFIX = (
     "Return ONLY a single executable shell command in a fenced code block (```bash ... ```). "
@@ -66,17 +70,15 @@ def is_destructive(command: str) -> bool:
 
 
 def log_command(command: str, log_path: Path) -> None:
-    """Append a timestamped command to the log file. Silent on OSError."""
-    from datetime import UTC, datetime
-
+    """Append a timestamped command to the audit log. Raises StorageError on failure."""
     try:
-        log_path.parent.mkdir(parents=True, exist_ok=True)
+        ensure_private_dir(log_path.parent)
         timestamp = datetime.now(UTC).isoformat()
         with log_path.open("a") as f:
             f.write(f"[{timestamp}] {command}\n")
         log_path.chmod(0o600)
-    except OSError:
-        pass
+    except OSError as e:
+        raise StorageError(f"Command not logged to {log_path}: {e.strerror or e}") from e
 
 
 def run_command(command: str) -> int:

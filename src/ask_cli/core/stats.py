@@ -1,9 +1,11 @@
 """Usage statistics tracking for ask-cli."""
 
 import copy
-import json
 from datetime import UTC, datetime
 from pathlib import Path
+
+from ask_cli.core.storage import read_json_object, write_private_json
+from ask_cli.exceptions import StorageError
 
 EMPTY_STATS: dict = {
     "total_queries": 0,
@@ -15,14 +17,19 @@ EMPTY_STATS: dict = {
 }
 
 
+RESET_HINT = "Run `ask --stats-reset` to start fresh statistics."
+
+
 def load_stats(stats_path: Path) -> dict:
-    """Load stats from disk; return EMPTY_STATS copy if missing or corrupt."""
-    if not stats_path.exists():
-        return copy.deepcopy(EMPTY_STATS)
+    """Load stats from disk; an EMPTY_STATS copy if the file doesn't exist yet.
+
+    Raises StorageError (with a reset hint) if the file is unreadable or corrupt.
+    """
     try:
-        return json.loads(stats_path.read_text())
-    except (OSError, json.JSONDecodeError):
-        return copy.deepcopy(EMPTY_STATS)
+        stats = read_json_object(stats_path)
+    except StorageError as e:
+        raise StorageError(str(e), hint=RESET_HINT) from e
+    return copy.deepcopy(EMPTY_STATS) if stats is None else stats
 
 
 def record_query(
@@ -31,34 +38,24 @@ def record_query(
     input_chars: int,
     output_chars: int,
 ) -> None:
-    """Increment counters and persist. Silent on OSError."""
-    try:
-        stats = load_stats(stats_path)
-        stats["total_queries"] = stats.get("total_queries", 0) + 1
-        stats["input_chars"] = stats.get("input_chars", 0) + input_chars
-        stats["output_chars"] = stats.get("output_chars", 0) + output_chars
+    """Increment counters and persist. Raises StorageError on failure."""
+    stats = load_stats(stats_path)
+    stats["total_queries"] = stats.get("total_queries", 0) + 1
+    stats["input_chars"] = stats.get("input_chars", 0) + input_chars
+    stats["output_chars"] = stats.get("output_chars", 0) + output_chars
 
-        by_mode = stats.get("queries_by_mode", {})
-        by_mode[mode] = by_mode.get(mode, 0) + 1
-        stats["queries_by_mode"] = by_mode
+    by_mode = stats.get("queries_by_mode", {})
+    by_mode[mode] = by_mode.get(mode, 0) + 1
+    stats["queries_by_mode"] = by_mode
 
-        now = datetime.now(UTC).isoformat()
-        if stats.get("first_use") is None:
-            stats["first_use"] = now
-        stats["last_use"] = now
+    now = datetime.now(UTC).isoformat()
+    if stats.get("first_use") is None:
+        stats["first_use"] = now
+    stats["last_use"] = now
 
-        stats_path.parent.mkdir(parents=True, exist_ok=True)
-        stats_path.write_text(json.dumps(stats, indent=2))
-        stats_path.chmod(0o600)
-    except OSError:
-        pass
+    write_private_json(stats_path, stats)
 
 
 def reset_stats(stats_path: Path) -> None:
-    """Write EMPTY_STATS to disk. Silent on OSError."""
-    try:
-        stats_path.parent.mkdir(parents=True, exist_ok=True)
-        stats_path.write_text(json.dumps(dict(EMPTY_STATS), indent=2))
-        stats_path.chmod(0o600)
-    except OSError:
-        pass
+    """Overwrite stats with EMPTY_STATS (also repairs a corrupt file). Raises StorageError."""
+    write_private_json(stats_path, copy.deepcopy(EMPTY_STATS))

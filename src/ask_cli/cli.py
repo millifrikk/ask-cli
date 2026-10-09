@@ -1,7 +1,6 @@
 """Argument parsing and entry point for ask-cli."""
 
 import argparse
-import json
 import os
 import sys
 from pathlib import Path
@@ -31,6 +30,7 @@ from ask_cli.core.files import read_attachments
 from ask_cli.core.history import ConversationHistory
 from ask_cli.core.saved import delete_saved, list_saved, recall_response, save_response
 from ask_cli.core.stats import load_stats, record_query, reset_stats
+from ask_cli.core.storage import read_json_object, write_private_json
 from ask_cli.core.templates import JSON_SYSTEM_SUFFIX, resolve_system_prompt
 from ask_cli.exceptions import (
     AskCLIError,
@@ -38,6 +38,7 @@ from ask_cli.exceptions import (
     ModelNotFoundError,
     ProviderError,
     SavedResponseError,
+    StorageError,
 )
 from ask_cli.output import (
     ResponseDisplay,
@@ -171,6 +172,14 @@ def _handle_list_models(provider_name: str, config: AppConfig) -> None:
     render_model_list(provider_name, models)
 
 
+def _log_command_or_warn(command: str, log_path: Path) -> None:
+    # The log is an audit trail, not a safety gate: warn rather than block the command
+    try:
+        log_command(command, log_path)
+    except StorageError as error:
+        render_warning(str(error))
+
+
 def _handle_set_default_provider(provider_name: str, config_path: Path) -> None:
     if provider_name not in PROVIDER_CLASSES:
         raise ConfigError(
@@ -178,12 +187,11 @@ def _handle_set_default_provider(provider_name: str, config_path: Path) -> None:
             hint=f"Available providers: {', '.join(PROVIDER_CLASSES)}",
         )
     try:
-        raw = json.loads(config_path.read_text()) if config_path.exists() else {}
+        raw = read_json_object(config_path) or {}
         raw["default_provider"] = provider_name
-        config_path.write_text(json.dumps(raw, indent=2))
-        config_path.chmod(0o600)
-    except (OSError, json.JSONDecodeError) as e:
-        raise ConfigError(f"Failed to update config {config_path}: {e}") from e
+        write_private_json(config_path, raw)
+    except StorageError as e:
+        raise ConfigError(f"Failed to update config: {e}") from e
     render_info(f"Default provider set to '{provider_name}'.")
 
 
@@ -559,7 +567,7 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
         elif args.dry_run:
             render_info("Dry run — command not executed.")
         elif args.execute and not is_destructive(command):
-            log_command(command, paths.commands_log)
+            _log_command_or_warn(command, paths.commands_log)
             exit_code = run_command(command)
             if exit_code != 0:
                 render_warning(f"Command exited with code {exit_code}.")
@@ -572,7 +580,7 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
                 answer = input("Execute this command? [y/N]: ").strip().lower()
                 confirmed = answer in ("y", "yes")
             if confirmed:
-                log_command(command, paths.commands_log)
+                _log_command_or_warn(command, paths.commands_log)
                 run_command(command)
 
     # --copy / --copy-code: send response or code block to clipboard
@@ -586,8 +594,11 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
         else:
             render_warning("No code block found in response.")
 
-    # Record usage stats after a successful query
+    # Record usage stats after a successful query; a stats failure must not lose the answer
     if response:
-        record_query(paths.stats_file, template or "default", len(query), len(response))
+        try:
+            record_query(paths.stats_file, template or "default", len(query), len(response))
+        except StorageError as error:
+            render_warning(f"Usage statistics not recorded: {error}")
 
     return 0

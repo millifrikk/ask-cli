@@ -1,7 +1,5 @@
 """Tests for shell command extraction, safety checks, and logging."""
 
-from unittest.mock import patch
-
 from ask_cli.core.commands import (
     extract_command,
     extract_first_code_block,
@@ -125,11 +123,15 @@ def test_log_creates_parent_dir(tmp_path):
     assert log_path.exists()
 
 
-def test_log_silent_on_oserror(tmp_path):
-    log_path = tmp_path / "commands.log"
-    with patch("builtins.open", side_effect=OSError("disk full")):
-        # Must not raise
-        log_command("ls", log_path)
+def test_log_failure_raises_storage_error(tmp_path):
+    import pytest
+
+    from ask_cli.exceptions import StorageError
+
+    blocker = tmp_path / "file"
+    blocker.write_text("")
+    with pytest.raises(StorageError, match="not logged"):
+        log_command("ls", blocker / "commands.log")
 
 
 def test_log_sets_mode_0600_on_create(tmp_path):

@@ -1,11 +1,13 @@
 """Conversation history management — load, save, TTL expiry."""
 
-import json
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
-from ask_cli.exceptions import HistoryError
+from ask_cli.core.storage import read_json_object, write_private_json
+from ask_cli.exceptions import HistoryError, StorageError
+
+CLEAR_HINT = "Run `ask --clear` to start a fresh conversation."
 
 
 class ConversationHistory:
@@ -21,16 +23,15 @@ class ConversationHistory:
     def load(self) -> bool:
         """Load history from disk. Returns False if expired or missing (not an error).
 
-        Raises HistoryError on I/O failure or JSON corruption.
+        Raises HistoryError if the file is unreadable or corrupt.
         """
-        if not self._path.exists():
+        try:
+            raw = read_json_object(self._path)
+        except StorageError as e:
+            raise HistoryError(f"Conversation history unusable: {e}", hint=CLEAR_HINT) from e
+        if raw is None:
             self.start_new()
             return False
-
-        try:
-            raw = json.loads(self._path.read_text())
-        except (OSError, json.JSONDecodeError) as e:
-            raise HistoryError(f"Failed to read conversation history: {e}") from e
 
         timestamp_str = raw.get("timestamp", "")
         if not timestamp_str:
@@ -71,22 +72,22 @@ class ConversationHistory:
 
     def save(self) -> None:
         """Write history to disk. Raises HistoryError on write failure."""
+        data = {
+            "session_id": self._session_id,
+            "timestamp": datetime.now(tz=UTC).isoformat(),
+            "messages": self._messages,
+        }
         try:
-            self._path.parent.mkdir(parents=True, exist_ok=True)
-            data = {
-                "session_id": self._session_id,
-                "timestamp": datetime.now(tz=UTC).isoformat(),
-                "messages": self._messages,
-            }
-            self._path.write_text(json.dumps(data, indent=2))
-            self._path.chmod(0o600)
-        except OSError as e:
+            write_private_json(self._path, data)
+        except StorageError as e:
             raise HistoryError(f"Failed to save conversation history: {e}") from e
 
     def clear(self) -> None:
         """Delete history file and start a fresh session."""
-        if self._path.exists():
-            self._path.unlink()
+        try:
+            self._path.unlink(missing_ok=True)
+        except OSError as e:
+            raise HistoryError(f"Failed to clear conversation history {self._path}: {e}") from e
         self.start_new()
 
     @property

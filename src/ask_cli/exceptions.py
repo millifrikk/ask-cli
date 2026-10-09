@@ -56,3 +56,7 @@ class SavedResponseError(AskCLIError):
 
 class AgentError(AskCLIError):
     """Raised when the agent loop encounters an unrecoverable error."""
+
+
+class StorageError(AskCLIError):
+    """Raised when a local state file cannot be read, parsed, or written."""

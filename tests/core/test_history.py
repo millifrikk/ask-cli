@@ -67,7 +67,7 @@ def test_load_returns_false_on_ttl_expiry(history_path):
 def test_load_raises_on_corrupt_json(history_path):
     history_path.write_text("{ not json }")
     h = ConversationHistory(history_path, ttl_hours=1)
-    with pytest.raises(HistoryError, match="Failed to read"):
+    with pytest.raises(HistoryError, match="unusable"):
         h.load()
 
 
@@ -133,3 +133,28 @@ def test_naive_timestamp_handled(history_path):
     # Should not raise — naive timestamps are treated as UTC
     result = h.load()
     assert result is True
+
+
+@pytest.mark.parametrize("content", [b"\xff\xfe", b"[1, 2]"], ids=["invalid-utf8", "list"])
+def test_load_corrupt_file_raises_history_error_with_clear_hint(history_path, content):
+    history_path.write_bytes(content)
+    history = ConversationHistory(history_path, ttl_hours=1)
+    with pytest.raises(HistoryError) as exc_info:
+        history.load()
+    assert "ask --clear" in exc_info.value.hint
+
+
+def test_save_failure_raises_history_error(tmp_path):
+    blocker = tmp_path / "file"
+    blocker.write_text("")
+    history = ConversationHistory(blocker / "history.json", ttl_hours=1)
+    history.start_new()
+    with pytest.raises(HistoryError):
+        history.save()
+
+
+def test_clear_failure_raises_history_error(tmp_path):
+    path = tmp_path / "history.json"
+    path.mkdir()
+    with pytest.raises(HistoryError):
+        ConversationHistory(path, ttl_hours=1).clear()

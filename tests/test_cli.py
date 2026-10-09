@@ -337,7 +337,11 @@ def _main_with(argv: list[str], **patches) -> int:
         if "history_load" in patches:
             history_class.return_value.load.side_effect = patches["history_load"]
         with (
-            patch("ask_cli.cli.run_query", side_effect=patches.get("run_query"), return_value="ok"),
+            patch(
+                "ask_cli.cli.run_query",
+                side_effect=patches.get("run_query"),
+                return_value=patches.get("response", "ok"),
+            ),
             patch("ask_cli.cli.run_agent", side_effect=patches.get("run_agent")),
         ):
             return main(argv)
@@ -421,6 +425,58 @@ class TestProviderHint:
 
         hint = _provider_hint(ProviderError("x", provider="openai", status_code=429))
         assert "try again" in hint
+
+
+# --- local state failures ---
+
+
+def test_stats_write_failure_warns_but_keeps_the_answer(capsys):
+    from ask_cli.exceptions import StorageError
+
+    with patch("ask_cli.cli.record_query", side_effect=StorageError("disk full")):
+        assert _main_with(["hello"]) == 0
+    err = capsys.readouterr().err
+    assert "Usage statistics not recorded" in err
+    assert "disk full" in err
+
+
+def test_corrupt_stats_file_gives_reset_hint(capsys):
+    from ask_cli.config import resolve_paths
+
+    stats_file = resolve_paths().stats_file
+    stats_file.parent.mkdir(parents=True)
+    stats_file.write_text("[]")
+    with patch("ask_cli.cli.load_config", return_value=_make_config()):
+        from ask_cli.cli import main
+
+        assert main(["--stats"]) == 1
+    assert "ask --stats-reset" in capsys.readouterr().err
+
+
+def test_stats_reset_failure_does_not_claim_success(capsys):
+    from ask_cli.exceptions import StorageError
+
+    with (
+        patch("ask_cli.cli.load_config", return_value=_make_config()),
+        patch("ask_cli.cli.reset_stats", side_effect=StorageError("read-only")),
+    ):
+        from ask_cli.cli import main
+
+        assert main(["--stats-reset"]) == 1
+    assert "Statistics reset." not in capsys.readouterr().err
+
+
+def test_command_log_failure_warns_and_still_runs(capsys):
+    from ask_cli.exceptions import StorageError
+
+    with (
+        patch("ask_cli.cli.log_command", side_effect=StorageError("Command not logged: x")),
+        patch("ask_cli.cli.run_command", return_value=0) as run_command,
+    ):
+        exit_code = _main_with(["--cmd", "--execute", "list files"], response="```bash\nls\n```")
+    assert exit_code == 0
+    run_command.assert_called_once_with("ls")
+    assert "Command not logged" in capsys.readouterr().err
 
 
 # --- json mode ---

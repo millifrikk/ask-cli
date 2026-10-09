@@ -89,3 +89,18 @@ def test_save_overwrites_existing(saved_dir):
     entry = recall_response("mykey", saved_dir)
     assert entry["query"] == "new query"
     assert entry["response"] == "new response"
+
+
+def test_recall_corrupt_file_raises_saved_response_error(saved_dir):
+    saved_dir.mkdir(parents=True)
+    (saved_dir / "broken.json").write_bytes(b"\xff not json")
+    with pytest.raises(SavedResponseError, match="broken"):
+        recall_response("broken", saved_dir)
+
+
+def test_list_keeps_going_past_corrupt_files_and_flags_them(saved_dir):
+    save_response("good", "q", "r", saved_dir)
+    (saved_dir / "broken.json").write_text("[1]")
+    entries = {entry["name"]: entry for entry in list_saved(saved_dir)}
+    assert set(entries) == {"good", "broken"}
+    assert entries["broken"]["timestamp"] == "unreadable"
