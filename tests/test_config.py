@@ -350,3 +350,23 @@ def test_set_default_provider_refuses_to_clobber_corrupt_config(tmp_path):
     with pytest.raises(ConfigError):
         set_default_provider(config_path, "anthropic")
     assert config_path.read_text() == "{ broken"
+
+
+def test_dead_options_are_gone_from_defaults():
+    from ask_cli.config import DEFAULT_CONFIG
+
+    assert "offline_fallback" not in DEFAULT_CONFIG
+    assert "markdown" not in DEFAULT_CONFIG["output"]
+    assert "syntax_highlighting" not in DEFAULT_CONFIG["features"]
+
+
+def test_legacy_config_with_removed_options_still_loads(tmp_path):
+    legacy = {
+        "offline_fallback": {"enabled": False, "provider": "ollama"},
+        "output": {"code_theme": "dracula", "markdown": True},
+        "features": {"clipboard": False, "syntax_highlighting": True},
+    }
+    (tmp_path / "config.json").write_text(json.dumps(legacy))
+    config = load_config(_paths(tmp_path))
+    assert config.output.code_theme == "dracula"
+    assert config.features.clipboard is False

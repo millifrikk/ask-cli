@@ -162,15 +162,9 @@ DEFAULT_CONFIG: dict = {
     },
     "features": {
         "clipboard": True,
-        "syntax_highlighting": True,
     },
     "output": {
         "code_theme": "monokai",
-        "markdown": True,
-    },
-    "offline_fallback": {
-        "enabled": False,
-        "provider": "ollama",
     },
 }
 
@@ -196,19 +190,11 @@ class DefaultsConfig:
 @dataclass
 class FeaturesConfig:
     clipboard: bool = True
-    syntax_highlighting: bool = True
 
 
 @dataclass
 class OutputConfig:
     code_theme: str = "monokai"
-    markdown: bool = True
-
-
-@dataclass
-class OfflineFallbackConfig:
-    enabled: bool = False
-    provider: str = "ollama"
 
 
 @dataclass
@@ -218,7 +204,6 @@ class AppConfig:
     defaults: DefaultsConfig = field(default_factory=DefaultsConfig)
     features: FeaturesConfig = field(default_factory=FeaturesConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
-    offline_fallback: OfflineFallbackConfig = field(default_factory=OfflineFallbackConfig)
 
 
 def _deep_merge(base: dict, override: dict) -> dict:
@@ -333,9 +318,8 @@ _SECTION_FIELDS: dict[str, dict[str, type | str]] = {
         "system_prompt": str,
         "system_prompt_windows": str,
     },
-    "features": {"clipboard": bool, "syntax_highlighting": bool},
-    "output": {"code_theme": str, "markdown": bool},
-    "offline_fallback": {"enabled": bool, "provider": str},
+    "features": {"clipboard": bool},
+    "output": {"code_theme": str},
 }
 
 
@@ -414,7 +398,6 @@ def load_config(paths: AppPaths) -> AppConfig:
     defaults_data = merged.get("defaults", {})
     features_data = merged.get("features", {})
     output_data = merged.get("output", {})
-    offline_data = merged.get("offline_fallback", {})
 
     return AppConfig(
         default_provider=merged.get("default_provider", "ollama"),
@@ -426,18 +409,8 @@ def load_config(paths: AppPaths) -> AppConfig:
             system_prompt=defaults_data.get("system_prompt", ""),
             system_prompt_windows=defaults_data.get("system_prompt_windows", ""),
         ),
-        features=FeaturesConfig(
-            clipboard=features_data.get("clipboard", True),
-            syntax_highlighting=features_data.get("syntax_highlighting", True),
-        ),
-        output=OutputConfig(
-            code_theme=output_data.get("code_theme", "monokai"),
-            markdown=output_data.get("markdown", True),
-        ),
-        offline_fallback=OfflineFallbackConfig(
-            enabled=offline_data.get("enabled", False),
-            provider=offline_data.get("provider", "ollama"),
-        ),
+        features=FeaturesConfig(clipboard=features_data.get("clipboard", True)),
+        output=OutputConfig(code_theme=output_data.get("code_theme", "monokai")),
     )
 
 

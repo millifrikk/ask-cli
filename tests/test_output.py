@@ -276,3 +276,16 @@ class TestConsoleUI:
 
     def test_stream_returns_full_text(self):
         assert output.ConsoleUI().stream(iter(["1. ", "ls"])) == "1. ls"
+
+
+class TestCodeTheme:
+    def test_configured_theme_reaches_markdown_code_blocks(self):
+        output.set_code_theme("dracula")
+        assert output.AskMarkdown("```py\nx = 1\n```").code_theme == "dracula"
+
+    def test_unknown_theme_is_a_config_error(self):
+        from ask_cli.exceptions import ConfigError
+
+        with pytest.raises(ConfigError, match="code_theme") as exc_info:
+            output.set_code_theme("no-such-theme")
+        assert "monokai" in exc_info.value.hint

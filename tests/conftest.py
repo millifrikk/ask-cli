@@ -12,7 +12,6 @@ from ask_cli.config import (
     AppConfig,
     DefaultsConfig,
     FeaturesConfig,
-    OfflineFallbackConfig,
     OutputConfig,
     ProviderConfig,
 )
@@ -44,10 +43,10 @@ def fake_clipboard(monkeypatch) -> list[str]:
 
 @pytest.fixture(autouse=True)
 def restore_output_consoles():
-    # --no-color rebinds the module-level consoles; undo it after every test.
-    original = (output.console, output.err_console)
+    # --no-color rebinds the module-level consoles and the code theme is module state; reset.
+    original = (output.console, output.err_console, output._code_theme)
     yield
-    output.console, output.err_console = original
+    output.console, output.err_console, output._code_theme = original
 
 
 @pytest.fixture
@@ -75,7 +74,6 @@ def minimal_app_config(minimal_provider_config) -> AppConfig:
         defaults=DefaultsConfig(max_tokens=4096, quick_max_tokens=1024, history_ttl_hours=1),
         features=FeaturesConfig(),
         output=OutputConfig(),
-        offline_fallback=OfflineFallbackConfig(),
     )
 
 

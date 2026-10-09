@@ -58,6 +58,7 @@ from ask_cli.output import (
     render_saved_list,
     render_stats,
     render_warning,
+    set_code_theme,
 )
 from ask_cli.providers import PROVIDER_CLASSES, get_provider, provider_statuses
 from ask_cli.providers.base import BaseProvider
@@ -399,6 +400,7 @@ class _Request:
 def _run(args: argparse.Namespace) -> int:
     paths = resolve_paths()
     config = load_config(paths)
+    set_code_theme(config.output.code_theme)
     provider_name = args.provider or config.default_provider
 
     if any(getattr(args, flag) for flag in MANAGEMENT_FLAGS):

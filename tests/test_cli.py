@@ -9,7 +9,6 @@ from ask_cli.config import (
     AppConfig,
     DefaultsConfig,
     FeaturesConfig,
-    OfflineFallbackConfig,
     OutputConfig,
     ProviderConfig,
 )
@@ -28,7 +27,6 @@ def _make_config(**provider_overrides) -> AppConfig:
         defaults=DefaultsConfig(),
         features=FeaturesConfig(),
         output=OutputConfig(),
-        offline_fallback=OfflineFallbackConfig(),
     )
 
 
@@ -1023,3 +1021,18 @@ def test_stats_record_the_mode_used(argv, mode):
     ):
         assert main(argv) == 0
     assert record_query.call_args.args[1] == mode
+
+
+def test_configured_code_theme_is_applied():
+    from ask_cli.cli import main
+
+    config = _make_config()
+    config.output.code_theme = "dracula"
+    with (
+        patch("ask_cli.cli.load_config", return_value=config),
+        patch("ask_cli.cli.ConversationHistory"),
+        patch("ask_cli.cli.run_query", return_value="ok"),
+        patch("ask_cli.cli.set_code_theme") as set_code_theme,
+    ):
+        assert main(["hello"]) == 0
+    set_code_theme.assert_called_once_with("dracula")

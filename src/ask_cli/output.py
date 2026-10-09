@@ -4,6 +4,8 @@ from collections.abc import Iterable
 from types import TracebackType
 
 import pyperclip
+from pygments.styles import get_style_by_name
+from pygments.util import ClassNotFound
 from rich.console import Console
 from rich.live import Live
 from rich.markdown import CodeBlock, Markdown
@@ -14,11 +16,15 @@ from rich.table import Table
 from rich.text import Text
 
 from ask_cli.core.fences import extract_code_blocks, strip_outer_fence
+from ask_cli.exceptions import ConfigError
 
 # Answers go to stdout; errors, warnings, notices and prompts go to stderr so that
 # `ask ... | jq` and `ask ... > file` only ever receive the model's response.
 console = Console(highlight=False)
 err_console = Console(stderr=True, highlight=False)
+
+# Pygments style for code blocks; set once at startup from output.code_theme
+_code_theme = "monokai"
 
 
 class PlainCodeBlock(CodeBlock):
@@ -43,13 +49,30 @@ class PlainCodeBlock(CodeBlock):
 
 
 class AskMarkdown(Markdown):
-    """Markdown renderer that emits click-selectable code blocks."""
+    """Markdown renderer that emits click-selectable code blocks in the configured theme."""
 
     elements = {
         **Markdown.elements,
         "fence": PlainCodeBlock,
         "code_block": PlainCodeBlock,
     }
+
+    def __init__(self, markup: str) -> None:
+        super().__init__(markup, code_theme=_code_theme)
+
+
+def set_code_theme(theme: str) -> None:
+    """Use a Pygments style for code blocks. Raises ConfigError for unknown styles."""
+    global _code_theme
+    try:
+        get_style_by_name(theme)
+    except ClassNotFound:
+        raise ConfigError(
+            f"Unknown output.code_theme '{theme}' in your config file.",
+            hint="Use a Pygments style name such as monokai, dracula, github-dark or "
+            "solarized-light.",
+        ) from None
+    _code_theme = theme
 
 
 def disable_color() -> None:
@@ -183,12 +206,12 @@ def render_raw(text: str) -> None:
     console.print(text, markup=False, highlight=False)
 
 
-def render_code(code: str, language: str = "", theme: str = "monokai") -> None:
+def render_code(code: str, language: str = "") -> None:
     """Render a code block with syntax highlighting, click-selection friendly."""
     syntax = Syntax(
         code,
         language or "text",
-        theme=theme,
+        theme=_code_theme,
         word_wrap=True,
         padding=0,
         background_color="default",
