@@ -37,6 +37,7 @@ from ask_cli.exceptions import (
     TemplateError,
 )
 from ask_cli.output import (
+    ResponseDisplay,
     copy_to_clipboard,
     disable_color,
     render_error,
@@ -509,19 +510,20 @@ def main() -> None:
     output_mode = _determine_output_mode(args)
 
     try:
-        response = run_query(
-            query=query,
-            provider=provider,
-            model=model,
-            max_tokens=max_tokens,
-            system_prompt=system_prompt,
-            history=history,
-            use_history=use_history,
-            output_mode=output_mode,
-            # --quick disables reasoning tokens on models that support it (Qwen3.5
-            # via Ollama, etc.) so the token budget doesn't get eaten by thinking.
-            think=False if args.quick else None,
-        )
+        with ResponseDisplay(output_mode) as display:
+            response = run_query(
+                query=query,
+                provider=provider,
+                model=model,
+                max_tokens=max_tokens,
+                system_prompt=system_prompt,
+                history=history,
+                use_history=use_history,
+                on_chunk=display.update,
+                # --quick disables reasoning tokens on models that support it (Qwen3.5
+                # via Ollama, etc.) so the token budget doesn't get eaten by thinking.
+                think=False if args.quick else None,
+            )
     except ProviderError as e:
         hint = None
         if e.status_code == 401:

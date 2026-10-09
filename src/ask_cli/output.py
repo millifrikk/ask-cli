@@ -1,12 +1,18 @@
 """Single rich.Console instance and all rendering helpers for ask-cli."""
 
+from types import TracebackType
+
 import pyperclip
 from rich.console import Console
+from rich.live import Live
 from rich.markdown import CodeBlock, Markdown
 from rich.markup import escape
 from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.table import Table
+from rich.text import Text
+
+from ask_cli.core.fences import extract_code_blocks, strip_outer_fence
 
 # Answers go to stdout; errors, warnings, notices and prompts go to stderr so that
 # `ask ... | jq` and `ask ... > file` only ever receive the model's response.
@@ -57,9 +63,82 @@ def disable_color() -> None:
     err_console = Console(stderr=True, highlight=False, color_system=None)
 
 
+class ResponseDisplay:
+    """Render a streaming response for the given output mode.
+
+    On a terminal the response is drawn live (Markdown for markdown mode). When
+    stdout is a pipe or file, the text is written verbatim — no wrapping, padding
+    or Markdown rendering — so `| jq`, `> script.py` and `> notes.md` get exactly
+    what the model produced. Modes that need the whole response (json, code) are
+    written once the stream ends.
+    """
+
+    def __init__(self, output_mode: str) -> None:
+        self._mode = output_mode
+        self._chunks: list[str] = []
+        self._live: Live | None = None
+
+    def __enter__(self) -> "ResponseDisplay":
+        if console.is_terminal:
+            code_only = self._mode == "code"
+            if not code_only:
+                console.rule("ask", align="left", style="dim", characters="─")
+            # --code-only streams transiently, then re-renders just the code blocks
+            self._live = Live(console=console, refresh_per_second=15, transient=code_only)
+            self._live.__enter__()
+        return self
+
+    def update(self, chunk: str) -> None:
+        self._chunks.append(chunk)
+        if self._live is not None:
+            self._live.update(self._live_renderable("".join(self._chunks)))
+        elif self._mode in ("markdown", "raw"):
+            console.out(chunk, end="", highlight=False)
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        text = "".join(self._chunks)
+        if self._live is not None:
+            self._live.__exit__(exc_type, exc, traceback)
+            if self._mode == "code" and text:
+                _render_code_blocks(text)
+            return
+        if not text:
+            return
+        if self._mode == "json":
+            console.out(strip_outer_fence(text), highlight=False)
+        elif self._mode == "code":
+            blocks = extract_code_blocks(text)
+            body = "\n\n".join(code for _, code in blocks) if blocks else text.rstrip("\n")
+            console.out(body, highlight=False)
+        elif not text.endswith("\n"):
+            console.out("", highlight=False)
+
+    def _live_renderable(self, text: str) -> AskMarkdown | Text:
+        if self._mode == "markdown":
+            return AskMarkdown(text)
+        return Text(text)
+
+
+def _render_code_blocks(text: str) -> None:
+    blocks = extract_code_blocks(text)
+    if not blocks:
+        render_raw(text)
+        return
+    for language, code in blocks:
+        render_code(code, language=language)
+
+
 def render_markdown(text: str) -> None:
-    """Render text as markdown."""
-    console.print(AskMarkdown(text))
+    """Render text as markdown on a terminal; write the source verbatim when piped."""
+    if console.is_terminal:
+        console.print(AskMarkdown(text))
+    else:
+        console.out(text.rstrip("\n"), highlight=False)
 
 
 def render_raw(text: str) -> None:

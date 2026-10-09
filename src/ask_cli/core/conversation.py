@@ -1,13 +1,8 @@
-"""Main query orchestrator — run_query() and output rendering."""
+"""Main query orchestrator — run_query()."""
 
-import re
+from collections.abc import Callable
 
-from rich.live import Live
-from rich.text import Text
-
-from ask_cli import output
 from ask_cli.core.history import ConversationHistory
-from ask_cli.output import AskMarkdown, render_code, render_raw
 from ask_cli.providers.base import BaseProvider
 
 
@@ -20,40 +15,23 @@ def run_query(
     system_prompt: str | None,
     history: ConversationHistory,
     use_history: bool,
-    output_mode: str,
+    on_chunk: Callable[[str], None],
     think: bool | None = None,
 ) -> str:
-    """Stream a query through the provider and return the full response text."""
+    """Stream a query through the provider, passing each chunk to on_chunk, and return
+    the full response text. Ctrl+C stops the stream and keeps the partial response."""
     messages = (history.messages if use_history else []) + [{"role": "user", "content": query}]
 
     accumulated: list[str] = []
     interrupted = False
-
-    # --code-only needs the full text before it can extract blocks, so we stream
-    # with transient=True and do a separate render pass after. Every other mode
-    # renders inline during streaming (no double output regardless of length).
-    code_only = output_mode == "code"
-
-    if not code_only and output.console.is_terminal:
-        output.console.rule("ask", align="left", style="dim", characters="─")
-
     try:
-        with Live(
-            console=output.console,
-            refresh_per_second=15,
-            transient=code_only,
-        ) as live:
-            for chunk in provider.stream(messages, model, max_tokens, system_prompt, think=think):
-                accumulated.append(chunk)
-                text = "".join(accumulated)
-                live.update(_live_renderable(text, output_mode))
+        for chunk in provider.stream(messages, model, max_tokens, system_prompt, think=think):
+            accumulated.append(chunk)
+            on_chunk(chunk)
     except KeyboardInterrupt:
         interrupted = True
 
     full_response = "".join(accumulated)
-
-    if code_only and full_response:
-        _render_code_blocks(full_response)
 
     if full_response:
         history.add_user_message(query)
@@ -62,22 +40,3 @@ def run_query(
         history.save()
 
     return full_response
-
-
-def _live_renderable(text: str, output_mode: str) -> AskMarkdown | Text:
-    """Return the right rich renderable for the streaming display."""
-    if output_mode in ("markdown", ""):
-        return AskMarkdown(text)
-    # raw / json / code — plain text during streaming
-    return Text(text)
-
-
-def _render_code_blocks(text: str) -> None:
-    """Extract and render code blocks from a response. Falls back to raw if none found."""
-    pattern = re.compile(r"```(\w*)\n(.*?)```", re.DOTALL)
-    matches = pattern.findall(text)
-    if not matches:
-        render_raw(text)
-        return
-    for language, code in matches:
-        render_code(code.rstrip("\n"), language=language)

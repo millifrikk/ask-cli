@@ -1,5 +1,6 @@
 """Tests for output helpers — focused on clipboard sanitization."""
 
+import io
 import re
 from pathlib import Path
 from unittest.mock import patch
@@ -100,6 +101,80 @@ class TestMarkupEscaping:
     def test_info_is_escaped(self, capsys):
         output.render_info("Saved response as '[wip]'.")
         assert "'[wip]'" in capsys.readouterr().err
+
+
+LONG_LINE = "x" * 200
+
+
+def _display(mode: str, chunks: list[str]) -> None:
+    with output.ResponseDisplay(mode) as display:
+        for chunk in chunks:
+            display.update(chunk)
+
+
+class TestResponseDisplayPiped:
+    # capsys makes stdout a non-terminal, exactly like `ask ... | jq` or `> file`
+
+    @pytest.mark.parametrize("mode", ["markdown", "raw"])
+    def test_emits_source_verbatim_without_wrapping(self, mode, capsys):
+        _display(mode, ["# Title\n\n", "- item\n", LONG_LINE])
+        assert capsys.readouterr().out == f"# Title\n\n- item\n{LONG_LINE}\n"
+
+    def test_no_double_trailing_newline(self, capsys):
+        _display("raw", ["hi\n"])
+        assert capsys.readouterr().out == "hi\n"
+
+    def test_empty_response_writes_nothing(self, capsys):
+        _display("markdown", [])
+        assert capsys.readouterr().out == ""
+
+    def test_json_mode_strips_fence(self, capsys):
+        _display("json", ['```json\n{"a": ', "1}\n```"])
+        assert capsys.readouterr().out == '{"a": 1}\n'
+
+    def test_json_long_string_survives_round_trip(self, capsys):
+        import json
+
+        _display("json", [json.dumps({"text": LONG_LINE})])
+        assert json.loads(capsys.readouterr().out) == {"text": LONG_LINE}
+
+    def test_code_mode_prints_only_code(self, capsys):
+        _display("code", ["Sure:\n```python\nprint('", LONG_LINE, "')\n```\nDone."])
+        assert capsys.readouterr().out == f"print('{LONG_LINE}')\n"
+
+    def test_code_mode_separates_multiple_blocks(self, capsys):
+        _display("code", ["```bash\nls\n```\ntext\n```bash\npwd\n```"])
+        assert capsys.readouterr().out == "ls\n\npwd\n"
+
+    def test_code_mode_without_blocks_falls_back_to_text(self, capsys):
+        _display("code", ["no code here"])
+        assert capsys.readouterr().out == "no code here\n"
+
+
+def test_render_markdown_piped_writes_source_verbatim(capsys):
+    output.render_markdown(f"# Saved\n\n{LONG_LINE}")
+    assert capsys.readouterr().out == f"# Saved\n\n{LONG_LINE}\n"
+
+
+class TestResponseDisplayTerminal:
+    @pytest.fixture(autouse=True)
+    def terminal_console(self):
+        output.console = Console(file=io.StringIO(), force_terminal=True, width=80)
+
+    def test_streams_through_live_markdown(self):
+        with patch("ask_cli.output.Live") as live_class:
+            _display("markdown", ["# Hi"])
+        live = live_class.return_value
+        rendered = live.update.call_args[0][0]
+        assert isinstance(rendered, output.AskMarkdown)
+
+    def test_code_mode_renders_extracted_blocks(self):
+        with (
+            patch("ask_cli.output.Live"),
+            patch("ask_cli.output.render_code") as render_code,
+        ):
+            _display("code", ["text\n```python\nprint(1)\n```"])
+        render_code.assert_called_once_with("print(1)", language="python")
 
 
 class TestDisableColor:
