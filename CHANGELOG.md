@@ -6,6 +6,26 @@ follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.3.5] — 2026-10-09
+
+### Security
+- `load_config` no longer writes API keys from `ASK_*_API_KEY` env vars into
+  the in-memory `DEFAULT_CONFIG`. A shallow-copying merge let env overrides
+  mutate the defaults, so any later first-run config write in the same
+  process persisted real keys to disk (observed via the test suite writing
+  keys into pytest temp dirs). The merge now deep-copies.
+
+### Changed
+- XDG config/data paths are resolved at startup into an `AppPaths` object and
+  passed down, instead of module-level constants frozen at import time.
+
+### Fixed
+- Test suite is now isolated from the host: an autouse fixture strips
+  `ASK_*`/`WSL_*`/`XDG_*` env vars, redirects `HOME`/XDG dirs to a temp dir,
+  and stubs the clipboard. Previously tests read real API keys (one test
+  failed whenever `ASK_ZAI_API_KEY` was set), incremented the real
+  `stats.json`, and overwrote the system clipboard.
+
 ## [2.3.4] — 2026-04-15
 
 ### Fixed
@@ -177,7 +197,8 @@ follows [SemVer](https://semver.org/).
   OpenAI, Google Gemini, Ollama), streaming, domain modes, conversation
   history, save/recall, agent mode, and XDG-compliant config.
 
-[Unreleased]: https://github.com/millifrikk/ask-cli/compare/v2.3.4...HEAD
+[Unreleased]: https://github.com/millifrikk/ask-cli/compare/v2.3.5...HEAD
+[2.3.5]: https://github.com/millifrikk/ask-cli/compare/v2.3.4...v2.3.5
 [2.3.4]: https://github.com/millifrikk/ask-cli/compare/v2.3.3...v2.3.4
 [2.3.3]: https://github.com/millifrikk/ask-cli/compare/v2.3.2...v2.3.3
 [2.3.2]: https://github.com/millifrikk/ask-cli/compare/v2.3.1...v2.3.2
