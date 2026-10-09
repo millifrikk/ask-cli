@@ -60,7 +60,26 @@ Release history:
 
 ---
 
-## Features shipped this release cycle (v2.1.0 → v2.3.2)
+## Hardening pass (October 2026, v2.3.5 → v2.4.2)
+
+A full code review plus a runtime audit of every flag (2026-10-09) found broken
+flags, crash paths, agent safety gaps and a test suite that leaked into the real
+environment. Fixed test-first, one release per phase:
+
+| Release | Theme |
+|---|---|
+| v2.3.5 | Test isolation; env API keys no longer leak into `DEFAULT_CONFIG` (the suite had been writing real keys to pytest temp dirs) |
+| v2.3.6 | Piped output verbatim (was hard-wrapped at 80 cols), real `--json`, working `--no-color`, diagnostics on stderr |
+| v2.3.7 | One error boundary (no tracebacks), network errors mapped, atomic state files, config validation, safer stdin/attachments/prompts |
+| v2.4.0 | Conflicting flags rejected, `--template`, composable templates, `--execute` implies `--cmd`, agent dry-run/plan approval, broader destructive list |
+| v2.4.1 | Architecture cleanup (`cli.py` parsing-only, provider dedup, one fence parser), `code_theme` wired, dead config removed |
+| v2.4.2 | Ruff enforces the style rules, CI on GitHub Actions, CLAUDE.md / SECURITY.md / PRD brought up to date |
+
+Test suite: 209 → 530 tests; providers went from 31–39% to 95–100% coverage.
+
+---
+
+## Features shipped in the earlier cycle (v2.1.0 → v2.3.2)
 
 ### v2.1.0 — reasoning models + click-friendly rendering
 - Ollama reasoning-model support: `think: bool | None` threaded through BaseProvider.stream
@@ -109,7 +128,7 @@ Release history:
 
 ### Docs
 - `README.md` — 560 lines, Linux/WSL install + Windows Path A/B + troubleshooting
-- `CONTRIBUTING.md` — bug report, feature request, PR setup, no-docstrings policy
+- `CONTRIBUTING.md` — bug report, feature request, PR setup, style and test-first policy
 - `SECURITY.md` — reporting process + documented design trade-offs
 - `CHANGELOG.md` — full v2.0.0 → v2.3.2 history
 
@@ -133,8 +152,9 @@ Audit artifacts (`AUDIT-REPORT.md`, `FILE-IO-AUDIT.md`, `GIT-HISTORY-SECRETS-AUD
 ## Outstanding work
 
 ### Pending user actions (not delegated to Claude)
-- [ ] Pull v2.3.2 on work laptop (WSL corporate): `cd ~/projects/ask-cli && git pull --tags && ~/.venvs/ask-cli/bin/pip install -e . && ask --version`. One `ask` invocation afterward runs the permission migration.
-- [ ] Pull v2.3.2 on personal PC (WSL): same command.
+- [ ] Pull v2.4.2 on work laptop (WSL corporate): `cd ~/projects/ask-cli && git pull --tags && ~/.venvs/ask-cli/bin/pip install -e . && ask --version`. Reinstalling matters: `httpx` and `pygments` are now declared dependencies.
+- [ ] Pull v2.4.2 on personal PC (WSL): same command.
+- [ ] Optional: `ask --stats-reset` on the dev laptop — test runs before v2.3.5 added fake queries to the real `stats.json`.
 - [x] ~~Move Google API key on WSL laptop from `~/.config/ask/config.json` → `ASK_GOOGLE_API_KEY` in `~/.bashrc`.~~ Done 2026-04-15 — all three configured keys (zai, anthropic, google) migrated; config.json blanked.
 
 ### Housekeeping (no urgency)
@@ -162,6 +182,7 @@ Audit artifacts (`AUDIT-REPORT.md`, `FILE-IO-AUDIT.md`, `GIT-HISTORY-SECRETS-AUD
 - `is_destructive()` regex list is documented as a **best-effort allowlist, not a sandbox**
 - Known bypasses (shell obfuscation, user-directory targets, non-`rm` deletion) enumerated in `SECURITY.md`
 - Alternative: flip model so `--execute` always prompts unless explicit `--yes` passed. Not shipped — current model preserves the one-shot ergonomics for trusted queries. Revisit if users report incidents.
+- v2.4.0 widened the list substantially (quotes/backslashes stripped before matching; mv, redirects, interpreters, uploads, git push, …) and `--execute` now implies `--cmd`. The agent's plan always needs approval.
 
 ### Local model viability on old laptops
 - Tested Gemma 4, CodeQwen, Qwen3.5 variants
@@ -217,6 +238,8 @@ Joined with `\n\n`. Each layer optional.
 | OpenAI GPT-5 family rejected `max_tokens` with 400 | They require `max_completion_tokens`; detect by model prefix |
 | File I/O audit found `executed_commands.log` at 0o664 from pre-v2.3.0 era | `is_new` guard in `log_command()` let old perms persist; one-shot migration fixes this retroactively |
 | Semgrep flagged 2 `shell=True` in `commands.py` | Expected — core of `--cmd --execute` feature; already `# noqa: S602` and documented in `SECURITY.md` |
+| Test suite wrote real API keys into `/tmp/pytest-of-*` (2026-10-09) | A shallow-copy merge let env keys mutate `DEFAULT_CONFIG`; tests also read real env vars, wrote the real `stats.json` and overwrote the clipboard. Autouse isolation fixtures now make that impossible; the leaked temp files were deleted |
+| Several flags "worked" in a terminal but broke when piped | Unit tests can't see rendering: smoke-test the real binary piped (`\| cat -A`, `\| jq`) and in a pty after output changes |
 
 ---
 
@@ -225,6 +248,7 @@ Joined with `\n\n`. Each layer optional.
 1. **Read this file first** — catches you up on current state.
 2. **`git log --oneline -10`** — see what's been committed recently.
 3. **`ask --version`** — confirm local installed version matches `main`.
-4. **`ls -la ~/.local/share/ask/ ~/.config/ask/`** — confirm 0o700 dirs + 0o600 files (should be clean on v2.3.2).
-5. **For Windows-side changes**, test from both WSL terminal (`ask`) and PowerShell (`wsl ask`) to verify context-switching is intact.
-6. **Before shipping a release**, see `CLAUDE.md` → "Versioning & Releases" for bump/tag/push/`gh release` workflow.
+4. **Dev environment:** `python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"` (`.venv/` is gitignored), then `.venv/bin/python -m pytest -q`.
+5. **`ls -la ~/.local/share/ask/ ~/.config/ask/`** — confirm 0o700 dirs + 0o600 files.
+6. **For Windows-side changes**, test from both WSL terminal (`ask`) and PowerShell (`wsl ask`) to verify context-switching is intact.
+7. **Before shipping a release**, run `/release-check` and see `CLAUDE.md` → "Git, Releases & Versioning".

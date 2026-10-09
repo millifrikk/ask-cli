@@ -70,7 +70,8 @@ Small, focused PRs get merged faster than large ones. If you're unsure whether s
 
 ask-cli follows the conventions documented in `CLAUDE.md`. Worth knowing up front:
 
-- **No docstrings.** The project's style is self-documenting code via clear naming, with inline comments only where logic is non-obvious. Don't add docstrings to functions/classes you're touching — they'll be removed in review.
+- **Docstrings only where they add value.** Prefer clear names; add a short docstring when it says something the name doesn't (a contract, a side effect, the why). Every module has a one-line docstring.
+- **Tests first.** Write a failing test for the bug or behaviour, then make it pass. Tests must never touch your real environment — the fixtures in `tests/conftest.py` handle that; see `CLAUDE.md` → Testing.
 - **No `print()`.** All user-facing output goes through `rich.Console` via helpers in `ask_cli/output.py`.
 - **Typed signatures, pragmatic locals.** Annotate function signatures and class attributes; skip obvious locals (`count = 0`, `items = []`).
 - **`X | Y` over `Optional[X]`** — Python 3.10+ union syntax, always.

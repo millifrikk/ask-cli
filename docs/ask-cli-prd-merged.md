@@ -5,6 +5,28 @@
 **Author:** Emil  
 **Status:** Draft
 
+> **Implementation status (v2.4.2, October 2026).** This PRD is the original design
+> document; parts of it are roadmap that hasn't been built. Where the shipped tool
+> deliberately differs, the current behaviour is:
+> - `--quick` caps responses at **1024** tokens (256 starved reasoning models).
+> - User templates are YAML files with a `prompt:` field in
+>   `~/.local/share/ask/templates/`, selected with `--template NAME`. Template variables
+>   (`{{…}}`) are not implemented. A domain flag and a task template combine
+>   (`--docker --fix`).
+> - `--json` adds a JSON-only instruction, strips a surrounding code fence when piped and
+>   warns if the result doesn't parse. All piped output is written verbatim; errors and
+>   notices go to stderr.
+> - Contradictory flags (`--fast --smart`, `--raw --json`, two domains, two management
+>   actions, agent-only flags without `--agent`) are rejected with exit code 2.
+> - `--execute` implies `--cmd`. Agent mode always asks you to approve the plan;
+>   `--auto-approve` only skips per-step confirmation of non-destructive commands, and
+>   `--agent --dry-run` shows the plan without running anything.
+> - Offline fallback, `--translate-to`, `--review`, `--debug`, `--document`, interactive
+>   mode, RAG and voice input are not implemented; the `offline_fallback` config keys
+>   were removed in v2.4.1 because nothing read them.
+>
+> `CHANGELOG.md` records what shipped when; `docs/STATUS.md` has the current state.
+
 ---
 
 ## 1. Executive Summary
@@ -302,7 +324,7 @@ ask --quick "restart nginx"
 - Parse response and extract relevant sections
 - Use regex/parsing for code block extraction
 - JSON mode includes system prompt for structured output
-- `--quick` appends system instruction: *"Give the shortest possible answer. For commands, return only the command. No explanation unless critical."* and caps `max_tokens` at 256.
+- `--quick` appends system instruction: *"Give the shortest possible answer. For commands, return only the command. No explanation unless critical."* and caps `max_tokens` at 1024 (originally specified as 256).
 
 **Use Cases:**
 ```bash
@@ -1080,7 +1102,7 @@ API keys can also be set via environment variables (e.g. `ASK_ZAI_API_KEY`) whic
   },
   "defaults": {
     "max_tokens": 4096,
-    "quick_max_tokens": 256,
+    "quick_max_tokens": 1024,
     "history_ttl_hours": 1
   },
   "features": {

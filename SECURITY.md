@@ -28,32 +28,41 @@ versions are not back-patched — upgrade to receive fixes.
 The following are documented design tradeoffs, not vulnerabilities. Each
 lists what's mitigated, what remains, and how to reason about it.
 
-### 1. `--cmd --execute` runs LLM output in a shell
+### 1. `--execute` and `--agent --auto-approve` run LLM output in a shell
 
-The extracted command goes to `subprocess.run(command, shell=True)`. The
-`is_destructive()` regex list catches common footguns (`rm`, `chmod`,
-`sudo`, `curl | sh`, `find -delete`, `git reset --hard`, redirects to
-system paths, etc.) and gates those behind an explicit `yes` prompt.
+Generated commands go to `subprocess.run(command, shell=True)` under
+`/bin/bash`. Commands matching the `is_destructive()` pattern list need the
+exact word `yes` before they run; everything else runs without asking under
+`--execute` (which implies `--cmd`) and under `--agent --auto-approve` (the
+agent's plan itself always needs approval).
 
-What the regex list **cannot** catch:
+Since v2.4.0 the list is matched after stripping quotes and backslashes
+(so `r\m` and `'rm'` are caught) and covers deletion and overwriting
+(`rm`, `mv`, `shred`, `dd`, `truncate`, `rsync --delete`, `tee`, any file
+redirect except `/dev/null`, scratch files directly under `/tmp` and
+`2>&1`), privilege and permission changes, discarding or publishing git
+work, code piped or passed inline to an interpreter (`| sh`, `| python3`,
+`python -c`, `bash -lc`, `node -e`, `eval`), uploads via `curl`/`wget`,
+and container/cluster deletion.
 
-- **Shell-level obfuscation.** Backslash escapes (`s\udo`), quoted
-  splitting (`"s""u""do"`), variable indirection (`X=chmod; $X 777 /`),
-  hex/octal escapes (`$'\x73\x75\x64\x6f'`), and base64 pipe-to-shell
-  (`echo ... | base64 -d | sh`) all bypass literal pattern matching
-  while running the intended destructive command.
-- **User-directory targets.** The "write to system path" pattern only
-  covers `/etc`, `/boot`, `/usr`, `/bin`, `/sbin`, `/dev`. Writes to
-  `$HOME`, `~/.ssh/authorized_keys`, `~/.bashrc`, etc. are **not**
-  flagged — those are yours to lose.
-- **Non-`rm` deletion**. `mv ~/important /tmp`, `truncate -s 0 $FILE`,
-  `> $FILE` (without a destructive prefix) all destroy data without
-  matching a pattern.
+What the list **still cannot** catch:
 
-Treat `--execute` like `curl | sh`. Use it when the prompt is trusted
-and the output space is narrow (e.g., `ask --cmd --execute "list files
-bigger than 100MB"`). When in doubt, use `--dry-run` or omit
-`--execute` so the command is shown and gated behind a confirmation.
+- **Shell-level indirection.** Variable indirection (`X=chmod; $X 777 /`),
+  `$'\x73\x75\x64\x6f'`-style escapes and command substitution that
+  builds a command at runtime run the intended command without matching a
+  literal pattern.
+- **Programs with destructive side effects of their own** — a project's
+  `make clean`, a script you wrote, a database client with a `DROP` in
+  its arguments.
+- **Anything new.** It is a best-effort list, not a sandbox.
+
+Agent steps run with stdin set to `/dev/null` and a 120-second timeout, so
+an interactive command can't hang the loop.
+
+Treat `--execute` like `curl | sh`: use it when the prompt is trusted and
+the output space is narrow (e.g. `ask --execute "list files bigger than
+100MB"`). When in doubt, use `--dry-run`, or plain `--cmd` so every
+command is shown and confirmed first.
 
 ### 2. Multi-line fenced blocks become shell scripts
 
@@ -99,6 +108,12 @@ editor if you need to inspect raw content.
   by other local users. A one-shot migration on every `load_config()`
   call tightens any pre-existing files/dirs with looser permissions —
   upgrading from an earlier version requires no user action.
-- **Provider `base_url`:** warns at load time if the URL is not
-  `https://` or `http://localhost` — an attacker-controlled `base_url`
-  would otherwise exfiltrate the API key on the next request.
+- **Provider `base_url`:** warns at load time if an API key would be
+  sent somewhere other than an `https://` URL or `http://` to this
+  machine (`localhost`, `127.0.0.1`, `::1` — checked on the parsed
+  hostname, so `localhost.evil.com` doesn't count). An
+  attacker-controlled `base_url` would otherwise exfiltrate the key on
+  the next request.
+- **State files** (history, stats, saved responses, config edits) are
+  written atomically via a 0600 temp file and rename, so they are never
+  briefly world-readable or left truncated.
