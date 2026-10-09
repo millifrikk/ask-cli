@@ -3,19 +3,15 @@
 import json
 import os
 import sys
+from pathlib import Path
 
 from ask_cli import __version__
 from ask_cli.config import (
-    COMMANDS_LOG_PATH,
-    CONFIG_PATH,
-    HISTORY_PATH,
-    SAVED_DIR,
-    TEMPLATES_DIR,
-    USAGE_STATS_PATH,
     AppConfig,
     DefaultsConfig,
     load_config,
     resolve_model,
+    resolve_paths,
 )
 from ask_cli.core.agent import run_agent
 from ask_cli.core.commands import (
@@ -168,7 +164,7 @@ def _handle_list_models(provider_name: str, config: AppConfig) -> None:
     render_model_list(provider_name, models, provider_config.default_model)
 
 
-def _handle_set_default_provider(provider_name: str) -> None:
+def _handle_set_default_provider(provider_name: str, config_path: Path) -> None:
     if provider_name not in PROVIDER_CLASSES:
         render_error(
             f"Unknown provider '{provider_name}'.",
@@ -176,10 +172,10 @@ def _handle_set_default_provider(provider_name: str) -> None:
         )
         sys.exit(1)
     try:
-        raw = json.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
+        raw = json.loads(config_path.read_text()) if config_path.exists() else {}
         raw["default_provider"] = provider_name
-        CONFIG_PATH.write_text(json.dumps(raw, indent=2))
-        CONFIG_PATH.chmod(0o600)
+        config_path.write_text(json.dumps(raw, indent=2))
+        config_path.chmod(0o600)
         render_info(f"Default provider set to '{provider_name}'.")
     except (OSError, json.JSONDecodeError) as e:
         render_error(f"Failed to update config: {e}")
@@ -368,15 +364,16 @@ def main() -> None:
     if args.no_color:
         disable_color()
 
+    paths = resolve_paths()
     try:
-        config = load_config()
+        config = load_config(paths)
     except ConfigError as e:
         render_error(str(e), hint="Fix or delete ~/.config/ask/config.json to reset.")
         sys.exit(1)
 
     # Management commands — dispatch and exit
     if args.clear:
-        history = ConversationHistory(HISTORY_PATH, config.defaults.history_ttl_hours)
+        history = ConversationHistory(paths.history_file, config.defaults.history_ttl_hours)
         history.clear()
         render_info("Conversation history cleared.")
         return
@@ -392,17 +389,17 @@ def main() -> None:
         return
 
     if args.set_default_provider:
-        _handle_set_default_provider(args.set_default_provider)
+        _handle_set_default_provider(args.set_default_provider, paths.config_file)
         return
 
     # Save & recall management — dispatch and exit
     if args.list_saved:
-        render_saved_list(list_saved(SAVED_DIR))
+        render_saved_list(list_saved(paths.saved_dir))
         return
 
     if args.delete_saved:
         try:
-            delete_saved(args.delete_saved, SAVED_DIR)
+            delete_saved(args.delete_saved, paths.saved_dir)
             render_info(f"Deleted saved response '{args.delete_saved}'.")
         except SavedResponseError as e:
             render_error(str(e))
@@ -411,7 +408,7 @@ def main() -> None:
 
     if args.recall:
         try:
-            entry = recall_response(args.recall, SAVED_DIR)
+            entry = recall_response(args.recall, paths.saved_dir)
             render_markdown(entry["response"])
         except SavedResponseError as e:
             render_error(str(e))
@@ -419,11 +416,11 @@ def main() -> None:
         return
 
     if args.stats:
-        render_stats(load_stats(USAGE_STATS_PATH))
+        render_stats(load_stats(paths.stats_file))
         return
 
     if args.stats_reset:
-        reset_stats(USAGE_STATS_PATH)
+        reset_stats(paths.stats_file)
         render_info("Statistics reset.")
         return
 
@@ -467,7 +464,7 @@ def main() -> None:
     template = _determine_template(args)
     try:
         system_prompt = resolve_system_prompt(
-            template, args.quick, TEMPLATES_DIR, _select_base_system_prompt(config.defaults)
+            template, args.quick, paths.templates_dir, _select_base_system_prompt(config.defaults)
         )
     except TemplateError as e:
         render_error(str(e))
@@ -495,14 +492,14 @@ def main() -> None:
                 base_system_prompt=system_prompt,
                 max_steps=args.agent_max_steps,
                 auto_approve=args.auto_approve,
-                log_path=COMMANDS_LOG_PATH,
+                log_path=paths.commands_log,
             )
         except AgentError as e:
             render_error(str(e))
             sys.exit(1)
         return
 
-    history = ConversationHistory(HISTORY_PATH, config.defaults.history_ttl_hours)
+    history = ConversationHistory(paths.history_file, config.defaults.history_ttl_hours)
     use_history = args.continue_session
     if use_history:
         history.load()
@@ -537,7 +534,7 @@ def main() -> None:
     # --save: persist the response after a successful query
     if args.save and response:
         try:
-            save_response(args.save, query, response, SAVED_DIR)
+            save_response(args.save, query, response, paths.saved_dir)
             render_info(f"Saved response as '{args.save}'.")
         except SavedResponseError as e:
             render_error(str(e))
@@ -550,7 +547,7 @@ def main() -> None:
         elif args.dry_run:
             render_info("Dry run — command not executed.")
         elif args.execute and not is_destructive(command):
-            log_command(command, COMMANDS_LOG_PATH)
+            log_command(command, paths.commands_log)
             exit_code = run_command(command)
             if exit_code != 0:
                 render_warning(f"Command exited with code {exit_code}.")
@@ -563,7 +560,7 @@ def main() -> None:
                 answer = input("Execute this command? [y/N]: ").strip().lower()
                 confirmed = answer in ("y", "yes")
             if confirmed:
-                log_command(command, COMMANDS_LOG_PATH)
+                log_command(command, paths.commands_log)
                 run_command(command)
 
     # --copy / --copy-code: send response or code block to clipboard
@@ -579,4 +576,4 @@ def main() -> None:
 
     # Record usage stats after a successful query
     if response:
-        record_query(USAGE_STATS_PATH, template or "default", len(query), len(response))
+        record_query(paths.stats_file, template or "default", len(query), len(response))

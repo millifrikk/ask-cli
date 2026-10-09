@@ -10,22 +10,43 @@ from pathlib import Path
 from ask_cli.exceptions import ConfigError
 
 
-def _config_dir() -> Path:
-    xdg = os.environ.get("XDG_CONFIG_HOME")
-    return Path(xdg) / "ask" if xdg else Path.home() / ".config" / "ask"
+@dataclass(frozen=True)
+class AppPaths:
+    config_dir: Path
+    data_dir: Path
+
+    @property
+    def config_file(self) -> Path:
+        return self.config_dir / "config.json"
+
+    @property
+    def history_file(self) -> Path:
+        return self.data_dir / "history.json"
+
+    @property
+    def templates_dir(self) -> Path:
+        return self.data_dir / "templates"
+
+    @property
+    def saved_dir(self) -> Path:
+        return self.data_dir / "saved"
+
+    @property
+    def commands_log(self) -> Path:
+        return self.data_dir / "executed_commands.log"
+
+    @property
+    def stats_file(self) -> Path:
+        return self.data_dir / "stats.json"
 
 
-def _data_dir() -> Path:
-    xdg = os.environ.get("XDG_DATA_HOME")
-    return Path(xdg) / "ask" if xdg else Path.home() / ".local" / "share" / "ask"
-
-
-CONFIG_PATH = _config_dir() / "config.json"
-HISTORY_PATH = _data_dir() / "history.json"
-TEMPLATES_DIR = _data_dir() / "templates"
-SAVED_DIR = _data_dir() / "saved"
-COMMANDS_LOG_PATH = _data_dir() / "executed_commands.log"
-USAGE_STATS_PATH = _data_dir() / "stats.json"
+def resolve_paths() -> AppPaths:
+    """Resolve XDG locations from the current environment (call once at startup)."""
+    xdg_config = os.environ.get("XDG_CONFIG_HOME")
+    xdg_data = os.environ.get("XDG_DATA_HOME")
+    config_root = Path(xdg_config) if xdg_config else Path.home() / ".config"
+    data_root = Path(xdg_data) if xdg_data else Path.home() / ".local" / "share"
+    return AppPaths(config_dir=config_root / "ask", data_dir=data_root / "ask")
 
 
 DEFAULT_CONFIG: dict = {
@@ -231,21 +252,21 @@ def _check_permissions(path: Path) -> None:
         render_warning(f"Config file {path} is readable by group/others. Run: chmod 600 {path}")
 
 
-def _migrate_permissions() -> None:
+def _migrate_permissions(paths: AppPaths) -> None:
     """Tighten permissions on pre-existing user-data files and dirs that were created
     before v2.3.x. Cheap (a few stat/chmod syscalls). Silent on any failure."""
-    for d in (_config_dir(), _data_dir(), SAVED_DIR, TEMPLATES_DIR):
+    for d in (paths.config_dir, paths.data_dir, paths.saved_dir, paths.templates_dir):
         if d.exists():
             with contextlib.suppress(OSError):
                 if d.stat().st_mode & 0o077:
                     d.chmod(0o700)
-    for f in (HISTORY_PATH, COMMANDS_LOG_PATH, USAGE_STATS_PATH, CONFIG_PATH):
+    for f in (paths.history_file, paths.commands_log, paths.stats_file, paths.config_file):
         if f.exists():
             with contextlib.suppress(OSError):
                 if f.stat().st_mode & 0o077:
                     f.chmod(0o600)
-    if SAVED_DIR.exists():
-        for entry in SAVED_DIR.glob("*.json"):
+    if paths.saved_dir.exists():
+        for entry in paths.saved_dir.glob("*.json"):
             with contextlib.suppress(OSError):
                 if entry.stat().st_mode & 0o077:
                     entry.chmod(0o600)
@@ -300,9 +321,10 @@ def _parse_provider_config(data: dict, provider_name: str = "") -> ProviderConfi
     )
 
 
-def load_config(config_path: Path = CONFIG_PATH) -> AppConfig:
+def load_config(paths: AppPaths) -> AppConfig:
     """Load config from disk, creating defaults on first run."""
-    _migrate_permissions()
+    _migrate_permissions(paths)
+    config_path = paths.config_file
 
     if not config_path.exists():
         _write_default_config(config_path)
