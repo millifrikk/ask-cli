@@ -135,7 +135,7 @@ def test_agent_escapes_rich_markup_in_command_preview(tmp_path):
         patch("ask_cli.core.agent.render_warning"),
         patch("ask_cli.core.agent.run_command_with_output", return_value=("", 0)),
         patch("ask_cli.core.agent.log_command"),
-        patch("ask_cli.core.agent.console.print") as mock_print,
+        patch("ask_cli.output.console.print") as mock_print,
     ):
         _run_agent_auto(provider, log_path=tmp_path / "log.txt")
     # Find the Step line among console.print calls; the raw markup must be escaped
@@ -157,7 +157,7 @@ def test_agent_escapes_rich_markup_in_command_output(tmp_path):
             return_value=(adversarial_output, 0),
         ),
         patch("ask_cli.core.agent.log_command"),
-        patch("ask_cli.core.agent.console.print") as mock_print,
+        patch("ask_cli.output.console.print") as mock_print,
     ):
         _run_agent_auto(provider, log_path=tmp_path / "log.txt")
     output_calls = [c for c in mock_print.call_args_list if "link" in str(c.args)]

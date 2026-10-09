@@ -5,13 +5,14 @@ from pathlib import Path
 from rich.live import Live
 from rich.markup import escape
 
+from ask_cli import output
 from ask_cli.core.commands import (
     extract_command,
     is_destructive,
     log_command,
     run_command_with_output,
 )
-from ask_cli.output import AskMarkdown, console, render_info, render_warning
+from ask_cli.output import AskMarkdown, render_info, render_warning
 from ask_cli.providers.base import BaseProvider
 
 AGENT_PLAN_SYSTEM = (
@@ -36,7 +37,7 @@ def _stream_to_text(
 ) -> str:
     """Stream a provider response and return the full text."""
     accumulated: list[str] = []
-    with Live(console=console, refresh_per_second=15) as live:
+    with Live(console=output.console, refresh_per_second=15) as live:
         for chunk in provider.stream(messages, model, max_tokens, system):
             accumulated.append(chunk)
             live.update(AskMarkdown("".join(accumulated)))
@@ -54,7 +55,7 @@ def _confirm(prompt: str) -> bool:
 
 def _error_recovery_choice() -> str:
     """Ask the user whether to skip the failed step or abort. Returns 'skip' or 'abort'."""
-    console.print("[dim]  [s] Skip this step and continue  [a] Abort agent[/dim]")
+    output.console.print("[dim]  [s] Skip this step and continue  [a] Abort agent[/dim]")
     try:
         choice = input("Choice [s/a]: ").strip().lower()
     except (EOFError, KeyboardInterrupt):
@@ -103,7 +104,9 @@ def run_agent(
             render_warning("No command found in agent response. Stopping.")
             break
 
-        console.print(f"[bold]Step {step}/{max_steps}:[/bold] [cyan]{escape(command)}[/cyan]")
+        output.console.print(
+            f"[bold]Step {step}/{max_steps}:[/bold] [cyan]{escape(command)}[/cyan]"
+        )
 
         # Confirmation logic
         if is_destructive(command):
@@ -127,10 +130,10 @@ def run_agent(
                 continue
 
         log_command(command, log_path)
-        output, exit_code = run_command_with_output(command)
+        command_output, exit_code = run_command_with_output(command)
 
-        if output:
-            console.print(f"[dim]{escape(output)}[/dim]")
+        if command_output:
+            output.console.print(f"[dim]{escape(command_output)}[/dim]")
 
         if exit_code != 0:
             render_warning(f"Command failed (exit {exit_code}).")
@@ -140,13 +143,13 @@ def run_agent(
                 break
             exec_messages += [
                 {"role": "assistant", "content": response},
-                {"role": "user", "content": f"Step failed: {output}. Skip and continue."},
+                {"role": "user", "content": f"Step failed: {command_output}. Skip and continue."},
             ]
             continue
 
         exec_messages += [
             {"role": "assistant", "content": response},
-            {"role": "user", "content": f"Output (exit {exit_code}):\n{output}\nContinue."},
+            {"role": "user", "content": f"Output (exit {exit_code}):\n{command_output}\nContinue."},
         ]
     else:
         render_warning(f"Agent reached max steps ({max_steps}).")

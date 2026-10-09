@@ -7,7 +7,10 @@ from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.table import Table
 
+# Answers go to stdout; errors, warnings, notices and prompts go to stderr so that
+# `ask ... | jq` and `ask ... > file` only ever receive the model's response.
 console = Console(highlight=False)
+err_console = Console(stderr=True, highlight=False)
 
 
 class PlainCodeBlock(CodeBlock):
@@ -42,9 +45,15 @@ class AskMarkdown(Markdown):
 
 
 def disable_color() -> None:
-    """Replace the module-level console with a no-markup, no-color instance."""
-    global console
-    console = Console(highlight=False, markup=False, no_color=True)
+    """Swap both consoles for colourless ones that still interpret markup.
+
+    Rich cannot change a console's colour system after construction, so the
+    module-level instances are rebound. Callers must therefore reference
+    `output.console` at call time, never `from ask_cli.output import console`.
+    """
+    global console, err_console
+    console = Console(highlight=False, color_system=None)
+    err_console = Console(stderr=True, highlight=False, color_system=None)
 
 
 def render_markdown(text: str) -> None:
@@ -75,17 +84,17 @@ def render_error(message: str, hint: str | None = None) -> None:
     lines = [f"[bold red]Error:[/bold red] {message}"]
     if hint:
         lines.append(f"[dim]{hint}[/dim]")
-    console.print("\n".join(lines))
+    err_console.print("\n".join(lines))
 
 
 def render_warning(message: str) -> None:
     """Render a warning message."""
-    console.print(f"[bold yellow]Warning:[/bold yellow] {message}")
+    err_console.print(f"[bold yellow]Warning:[/bold yellow] {message}")
 
 
 def render_info(message: str) -> None:
     """Render an informational message."""
-    console.print(f"[dim]{message}[/dim]")
+    err_console.print(f"[dim]{message}[/dim]")
 
 
 def _sanitize_for_clipboard(text: str) -> str:

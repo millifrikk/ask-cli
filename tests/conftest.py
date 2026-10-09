@@ -7,6 +7,7 @@ from pathlib import Path
 import pyperclip
 import pytest
 
+from ask_cli import output
 from ask_cli.config import (
     AppConfig,
     DefaultsConfig,
@@ -39,6 +40,14 @@ def fake_clipboard(monkeypatch) -> list[str]:
     monkeypatch.setattr(pyperclip, "copy", copied.append)
     monkeypatch.setattr(pyperclip, "paste", lambda: copied[-1] if copied else "")
     return copied
+
+
+@pytest.fixture(autouse=True)
+def restore_output_consoles():
+    # --no-color rebinds the module-level consoles; undo it after every test.
+    original = (output.console, output.err_console)
+    yield
+    output.console, output.err_console = original
 
 
 @pytest.fixture

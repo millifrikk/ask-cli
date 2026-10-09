@@ -5,8 +5,9 @@ import re
 from rich.live import Live
 from rich.text import Text
 
+from ask_cli import output
 from ask_cli.core.history import ConversationHistory
-from ask_cli.output import AskMarkdown, console, render_code, render_raw
+from ask_cli.output import AskMarkdown, render_code, render_raw
 from ask_cli.providers.base import BaseProvider
 
 
@@ -33,12 +34,12 @@ def run_query(
     # renders inline during streaming (no double output regardless of length).
     code_only = output_mode == "code"
 
-    if not code_only and console.is_terminal:
-        console.rule("ask", align="left", style="dim", characters="─")
+    if not code_only and output.console.is_terminal:
+        output.console.rule("ask", align="left", style="dim", characters="─")
 
     try:
         with Live(
-            console=console,
+            console=output.console,
             refresh_per_second=15,
             transient=code_only,
         ) as live:
