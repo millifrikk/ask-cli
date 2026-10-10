@@ -23,7 +23,6 @@ from ask_cli.core.commands import (
     extract_first_code_block,
     handle_generated_command,
 )
-from ask_cli.core.context import select_base_system_prompt
 from ask_cli.core.conversation import check_completeness, run_query
 from ask_cli.core.fences import is_json_response
 from ask_cli.core.files import read_attachments
@@ -492,7 +491,7 @@ def _prepare_request(
 
     templates = _determine_templates(args)
     system_prompt = resolve_system_prompt(
-        templates, args.quick, paths.templates_dir, select_base_system_prompt(config.defaults)
+        templates, args.quick, paths.templates_dir, config.defaults.system_prompt
     )
     cmd_mode = args.cmd or (args.dry_run and not args.agent)
     if cmd_mode:

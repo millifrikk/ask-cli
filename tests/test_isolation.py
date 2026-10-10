@@ -11,10 +11,6 @@ def test_api_key_env_vars_are_cleared():
     assert not [name for name in os.environ if name.startswith("ASK_")]
 
 
-def test_wsl_env_vars_are_cleared():
-    assert not [name for name in os.environ if name.startswith("WSL_")]
-
-
 def test_resolved_paths_live_under_tmp_path(tmp_path):
     paths = resolve_paths()
     assert paths.config_dir.is_relative_to(tmp_path)

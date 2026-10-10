@@ -132,19 +132,6 @@ def test_default_config_includes_linux_system_prompt(tmp_path):
     assert "Linux" in config.defaults.system_prompt
 
 
-def test_system_prompt_windows_parsed_from_config(tmp_path):
-    config_path = tmp_path / "config.json"
-    config_path.write_text(json.dumps({"defaults": {"system_prompt_windows": "WIN_TEST"}}))
-    config = load_config(_paths(tmp_path))
-    assert config.defaults.system_prompt_windows == "WIN_TEST"
-
-
-def test_default_config_includes_windows_system_prompt(tmp_path):
-    config = load_config(_paths(tmp_path))  # creates DEFAULT_CONFIG on first run
-    assert "Windows" in config.defaults.system_prompt_windows
-    assert "WSL" in config.defaults.system_prompt_windows
-
-
 @pytest.mark.parametrize(
     "url",
     [
@@ -378,3 +365,12 @@ def test_legacy_config_with_removed_options_still_loads(tmp_path):
     config = load_config(_paths(tmp_path))
     assert config.output.code_theme == "dracula"
     assert config.features.clipboard is False
+
+
+def test_legacy_windows_prompt_key_is_ignored(tmp_path):
+    legacy = {"defaults": {"system_prompt": "LINUX", "system_prompt_windows": "WINDOWS"}}
+    (tmp_path / "config.json").write_text(json.dumps(legacy))
+    config = load_config(_paths(tmp_path))
+    assert config.defaults.system_prompt == "LINUX"
+    assert not hasattr(config.defaults, "system_prompt_windows")
+    assert config.warnings == []

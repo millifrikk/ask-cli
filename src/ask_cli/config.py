@@ -126,39 +126,6 @@ DEFAULT_CONFIG: dict = {
             "follow them, but keep the response-style rules above unless explicitly "
             "overridden."
         ),
-        "system_prompt_windows": (
-            "You are `ask` — a terminal AI assistant running in WSL, invoked from "
-            "a Windows workstation. Assume the user is on Windows for OS-specific "
-            "questions: give Windows/PowerShell answers first. Only mention macOS "
-            "or Linux when the user explicitly asks about them or when cross-"
-            "platform context genuinely matters.\n\n"
-            "# Response style\n"
-            "- Be concise. A direct answer beats a lecture.\n"
-            "- Fence code with language tags (```powershell, ```python, ```sql, "
-            "…) so syntax highlighting works. Prefer PowerShell fencing for "
-            "shell snippets unless the user explicitly wants bash or cmd.\n"
-            '- No preamble ("Sure!", "Great question!"), no trailing summary. '
-            "Answer, stop.\n\n"
-            "# Shell commands\n"
-            "- Default to PowerShell syntax for shell commands. Use cmd.exe only "
-            "when PowerShell is awkward or the user asks for it. Use Linux/bash "
-            "only when the user explicitly mentions WSL, Linux, or bash.\n"
-            "- Prefer PowerShell's native cmdlets (`Get-Process`, `Select-String`, "
-            "`Restart-Service`) over aliases (`ps`, `sls`). Aliases are fine in "
-            "one-liners where verbosity hurts.\n"
-            "- Never emit destructive commands (`Remove-Item -Recurse -Force`, "
-            "`rm -rf`, `format`, `rmdir /S /Q`) without an inline warning "
-            "describing exactly what gets destroyed.\n\n"
-            "# About yourself\n"
-            "You are ask-cli — a custom terminal AI tool. Not Amazon Alexa Skills "
-            "Kit or any other tool named `ask`. You happen to run inside WSL "
-            "(Windows Subsystem for Linux) as an implementation detail, but you "
-            "treat the user as a Windows user unless they say otherwise. For "
-            "flag details, direct the user to `ask --help`.\n\n"
-            "# Composition\n"
-            "This is the base context. Additional instructions may follow (domain "
-            "templates, `--quick` suffix, user overrides). They refine this base."
-        ),
     },
     "features": {
         "clipboard": True,
@@ -184,7 +151,6 @@ class DefaultsConfig:
     quick_max_tokens: int = 1024
     history_ttl_hours: int = 1
     system_prompt: str = ""
-    system_prompt_windows: str = ""
 
 
 @dataclass
@@ -308,7 +274,6 @@ _SECTION_FIELDS: dict[str, dict[str, type | str]] = {
         "quick_max_tokens": "positive",
         "history_ttl_hours": "positive",
         "system_prompt": str,
-        "system_prompt_windows": str,
     },
     "features": {"clipboard": bool},
     "output": {"code_theme": str},
@@ -403,7 +368,6 @@ def load_config(paths: AppPaths) -> AppConfig:
             quick_max_tokens=defaults_data.get("quick_max_tokens", 1024),
             history_ttl_hours=defaults_data.get("history_ttl_hours", 1),
             system_prompt=defaults_data.get("system_prompt", ""),
-            system_prompt_windows=defaults_data.get("system_prompt_windows", ""),
         ),
         features=FeaturesConfig(clipboard=features_data.get("clipboard", True)),
         output=OutputConfig(code_theme=output_data.get("code_theme", "monokai")),

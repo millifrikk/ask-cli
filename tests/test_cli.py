@@ -568,3 +568,12 @@ def test_config_warnings_are_rendered(run_cli, minimal_app_config, capsys):
     minimal_app_config.warnings.append("Provider 'zai' base_url is risky.")
     assert run_cli(["hello"]).exit_code == 0
     assert "base_url is risky" in capsys.readouterr().err
+
+
+def test_ask_context_windows_no_longer_changes_the_prompt(run_cli, minimal_app_config, monkeypatch):
+    minimal_app_config.defaults.system_prompt = "LINUX_PROMPT"
+    # A leftover Windows prompt (old config) must not be picked up any more
+    minimal_app_config.defaults.system_prompt_windows = "WINDOWS_PROMPT"
+    monkeypatch.setenv("ASK_CONTEXT", "windows")
+    run = run_cli(["hello"])
+    assert run.run_query.call_args.kwargs["system_prompt"] == "LINUX_PROMPT"

@@ -21,13 +21,13 @@ from ask_cli.config import (
     ProviderConfig,
 )
 
-_ISOLATED_ENV_PREFIXES = ("ASK_", "WSL_", "XDG_")
+_ISOLATED_ENV_PREFIXES = ("ASK_", "XDG_")
 
 
 @pytest.fixture(autouse=True)
 def isolated_environment(tmp_path, monkeypatch) -> None:
     # Tests must never read real API keys, touch the real ~/.config/ask or
-    # ~/.local/share/ask, or inherit WSL context from the host shell.
+    # ~/.local/share/ask.
     for name in list(os.environ):
         if name.startswith(_ISOLATED_ENV_PREFIXES):
             monkeypatch.delenv(name)
