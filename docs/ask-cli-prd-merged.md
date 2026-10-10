@@ -5,7 +5,7 @@
 **Author:** Emil  
 **Status:** Draft
 
-> **Implementation status (v2.4.2, October 2026).** This PRD is the original design
+> **Implementation status (v2.5.0, October 2026).** This PRD is the original design
 > document; parts of it are roadmap that hasn't been built. Where the shipped tool
 > deliberately differs, the current behaviour is:
 > - `--quick` caps responses at **1024** tokens (256 starved reasoning models).
@@ -24,6 +24,9 @@
 > - Offline fallback, `--translate-to`, `--review`, `--debug`, `--document`, interactive
 >   mode, RAG and voice input are not implemented; the `offline_fallback` config keys
 >   were removed in v2.4.1 because nothing read them.
+> - **Linux only.** The Windows/PowerShell context (`ASK_CONTEXT`, a separate Windows
+>   system prompt, WSL launch detection) was removed in v2.5.0; WSL used as a Linux
+>   shell is still supported.
 >
 > `CHANGELOG.md` records what shipped when; `docs/STATUS.md` has the current state.
 

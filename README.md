@@ -26,9 +26,7 @@ A terminal AI assistant that lives where you work. Multi-provider, streaming, co
 - [Features](#features)
 - [Installation — Linux / WSL](#installation--linux--wsl)
 - [Configuration](#configuration)
-- [Windows integration (via WSL)](#windows-integration-via-wsl)
 - [Usage](#usage)
-- [Contexts — Linux vs Windows prompts](#contexts--linux-vs-windows-prompts)
 - [Upgrading](#upgrading)
 - [Development](#development)
 - [Troubleshooting](#troubleshooting)
@@ -73,7 +71,6 @@ That framing shaped every design decision:
 - **Multi-provider** — Anthropic, OpenAI, Google, Z.ai, Ollama — pick the cheapest model that answers the question well
 - **Always streaming** — responses feel immediate, not a 5-second stall then a wall of text
 - **Click-friendly output** — code blocks render without padded backgrounds so triple-click copies exactly the code
-- **Context-aware prompts** — the system prompt adapts when invoked from Windows-via-WSL vs. a native Linux shell
 - **`--cmd` and `--execute`** — generate a command with no prose, copy it, optionally run it (with safety checks on destructive patterns)
 - **Short flags for short needs** — `--quick` for terse answers, `--smart` to escalate to the better model, `-c` to continue the last conversation
 
@@ -96,7 +93,6 @@ If you'd rather avoid paid APIs entirely, Ollama supports local models and a fre
 | **Multi-provider** | Anthropic, Z.ai, OpenAI, Google Gemini, Ollama (local + cloud) — single command, pick the one that fits |
 | **Always streaming** | Responses render live via `rich.live`, not a wall of text after a 5-second pause |
 | **Model tiers** | `--fast` / default / `--smart` per provider; `--quick` for terse one-liners |
-| **Context-aware prompts** | Different system prompt when invoked from Windows via WSL vs. a Linux terminal |
 | **Reasoning model support** | `--quick` auto-disables thinking tokens on Qwen3.5 / DeepSeek-R1 so the budget isn't eaten by hidden chain-of-thought |
 | **Shell command generation** | `--cmd` generates a single command and auto-copies to clipboard; `--execute` runs safe commands automatically and asks you to type `yes` for destructive ones |
 | **Conversation history** | `-c` continues the previous session; 1-hour TTL; `--clear` resets |
@@ -140,7 +136,7 @@ python3 -m venv ~/.venvs/ask-cli
 mkdir -p ~/.local/bin
 ln -sf ~/.venvs/ask-cli/bin/ask ~/.local/bin/ask
 
-# Also symlink into /usr/local/bin so non-interactive shells (like wsl ask from Windows) find it
+# Optional: also symlink into /usr/local/bin so non-interactive shells (cron, scripts) find it
 sudo ln -sf ~/.venvs/ask-cli/bin/ask /usr/local/bin/ask
 ```
 
@@ -170,6 +166,16 @@ sudo ln -sf ~/.venvs/ask-cli/bin/ask /usr/local/bin/ask && \
 ask --version
 ```
 
+### WSL clipboard (optional)
+
+On WSL, for `--copy` / `--copy-code` to reach the Windows clipboard, install `wslu` inside WSL:
+
+```bash
+sudo apt install -y wslu
+```
+
+`pyperclip` auto-detects WSL and routes through `clip.exe`.
+
 ---
 
 ## Configuration
@@ -178,7 +184,7 @@ ask --version
 
 Two places are supported; env vars override the config file when both are set.
 
-**If you'll only invoke `ask` from an interactive shell (native Linux, or WSL used as a terminal):** put keys in `~/.bashrc`. Keeps secrets out of files and lets you rotate per-shell.
+**Recommended:** put keys in `~/.bashrc`. Keeps secrets out of files and lets you rotate per-shell.
 
 ```bash
 cat >> ~/.bashrc << 'EOF'
@@ -190,7 +196,7 @@ EOF
 source ~/.bashrc
 ```
 
-**If you'll also invoke `wsl ask "..."` from Windows PowerShell (dual-entry setup):** you also need keys in `~/.config/ask/config.json`. `wsl.exe` spawns a non-interactive bash, which does **not** source `~/.bashrc`, so env-var-only setups will fail with `Provider is not configured` on PowerShell invocations. Edit the config file (chmod 600 is applied automatically) and set `api_key` for each provider you use. Having the key in both places is fine — env vars win in interactive WSL, config.json takes over for `wsl ask`.
+**Alternatively** (e.g. for cron jobs or other non-interactive shells that don't source `~/.bashrc`), set `api_key` per provider in `~/.config/ask/config.json` (chmod 600 is applied automatically).
 
 Ollama (local or cloud) needs no key.
 
@@ -226,72 +232,6 @@ ask --list-providers           # see what's configured
 ask --list-models              # see tiers for the current provider
 ask -p zai --list-models       # or for another provider
 ```
-
----
-
-## Windows integration (via WSL)
-
-ask-cli runs inside WSL. You call it from Windows PowerShell or cmd. When invoked from Windows, ask-cli switches to a **general-purpose assistant prompt** (not the Linux-command-focused one).
-
-The integration has two setup paths depending on your Windows environment.
-
-### Path A — Personal / unmanaged Windows (easy)
-
-Add a PowerShell function to your profile — works in any new PowerShell window.
-
-```powershell
-# Open your PowerShell profile (creates the file if needed)
-notepad $PROFILE
-```
-
-Paste this and save:
-
-```powershell
-function ask {
-    $env:WSLENV = "ASK_CONTEXT/u:$env:WSLENV"
-    $env:ASK_CONTEXT = "windows"
-    wsl ask @args
-}
-```
-
-Then in a new PowerShell window:
-
-```powershell
-ask "what OS are you assuming I'm on?"
-```
-
-> If you get `File ... cannot be loaded` / execution policy errors, your machine is locked down — use Path B.
-
-### Path B — Corporate-managed Windows (PowerShell profile blocked)
-
-Group Policy on corporate machines often blocks PowerShell profile scripts. Bypass it by setting persistent user-scope environment variables — this writes to `HKCU\Environment` without any script execution.
-
-In PowerShell:
-
-```powershell
-[Environment]::SetEnvironmentVariable("ASK_CONTEXT", "windows", "User")
-[Environment]::SetEnvironmentVariable("WSLENV", "ASK_CONTEXT/u", "User")
-```
-
-**Close all Windows Terminal windows** (not just tabs — the whole app) so new ones inherit the updated environment. Then:
-
-```powershell
-wsl ask "what OS am I on?"
-```
-
-You'll type `wsl ask "..."` instead of `ask "..."` (four extra characters) — small price to pay on a locked-down machine.
-
-> ⚠️ **API keys must be in `~/.config/ask/config.json`** on WSL dual-entry setups. `wsl.exe` spawns a non-interactive bash that doesn't source `~/.bashrc`, so env-var-only configs fail with "Provider is not configured" when invoked from PowerShell. See [Configuration → API keys](#api-keys--where-to-put-them) above.
-
-### WSL clipboard (optional, both paths)
-
-For `--copy` / `--copy-code` from Windows to work against the Windows clipboard, install `wslu` inside WSL:
-
-```bash
-sudo apt install -y wslu
-```
-
-`pyperclip` auto-detects WSL and routes through `clip.exe`.
 
 ---
 
@@ -389,25 +329,6 @@ ask --agent --agent-max-steps 20 "..."     # let it take more steps
 ask --version
 ask --help
 ```
-
----
-
-## Contexts — Linux vs Windows prompts
-
-The system prompt adapts to where you're calling from.
-
-| Entry point | `ASK_CONTEXT` value | System prompt behavior |
-|---|---|---|
-| WSL terminal / native Linux | (unset) or anything else | Linux/Ubuntu focused, shell-command-friendly, GNU coreutils assumptions, destructive-command guardrails |
-| Windows PowerShell / cmd (via `wsl ask` or wrapper) | `windows` | General assistant, no OS assumptions, answers across topics — technical, conceptual, writing, analysis |
-
-You can override at any time by setting `ASK_CONTEXT` manually:
-
-```bash
-ASK_CONTEXT=windows ask "anything"    # force Windows prompt
-```
-
-Custom prompts live in `~/.config/ask/config.json` under `defaults.system_prompt` and `defaults.system_prompt_windows`.
 
 ---
 
@@ -523,14 +444,6 @@ echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
 ```
 
-### `ask: command not found` from `wsl ask` (Windows side)
-
-Non-interactive WSL shells don't source `~/.bashrc`. Symlink into a system path:
-
-```bash
-sudo ln -sf ~/.venvs/ask-cli/bin/ask /usr/local/bin/ask
-```
-
 ### Ollama cloud: `403 — subscription required`
 
 Free tier is rate-limited. Either wait it out, subscribe at https://ollama.com/upgrade, or use a different provider:
@@ -543,8 +456,6 @@ ask -p anthropic "..."
 
 API key is missing. Check with `ask --list-providers` and set the appropriate env var (`ASK_<PROVIDER>_API_KEY`).
 
-**If it only fails when invoking `wsl ask "..."` from PowerShell** but works in an interactive WSL terminal: `wsl.exe` spawns a non-interactive bash that doesn't source `~/.bashrc`, so your env vars aren't visible there. Put the key in `~/.config/ask/config.json`'s `api_key` field as well — env vars stay authoritative for interactive WSL, config.json covers the PowerShell path.
-
 ### Config JSON parse error
 
 You probably edited `~/.config/ask/config.json` and broke the syntax. Either fix the JSON, or reset:
@@ -553,10 +464,6 @@ You probably edited `~/.config/ask/config.json` and broke the syntax. Either fix
 mv ~/.config/ask/config.json ~/.config/ask/config.json.bak
 ask "hello"    # recreates defaults
 ```
-
-### PowerShell profile blocked (corporate machine)
-
-Group Policy prevents loading `$PROFILE`. Use the User-scope env var approach in the [Windows integration — Path B](#path-b--corporate-managed-windows-powershell-profile-blocked) section.
 
 ---
 

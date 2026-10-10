@@ -2,21 +2,21 @@
 
 Living document. Update when we make meaningful changes so the next session can pick up without excavating chat history.
 
-**Last updated:** 2026-10-09 · **Version:** v2.4.2
+**Last updated:** 2026-10-09 · **Version:** v2.5.0
 
 ---
 
 ## Current version
 
-**v2.4.2** — Tooling and docs: ruff enforces the style rules, CI on GitHub Actions, CLAUDE.md/SECURITY.md/PRD/STATUS current, 95% coverage. Final release of the Oct 2026 hardening pass (phases 0–5, v2.3.5 → v2.4.2), which follows a full code review and flag audit.
+**v2.5.0** — Linux-only: the Windows/PowerShell context switching was removed. Follows the Oct 2026 hardening pass (phases 0–5, v2.3.5 → v2.4.2), which follows a full code review and flag audit.
 
 ```bash
-ask --version  # ask 2.4.2
+ask --version  # ask 2.5.0
 ```
 
 Release history:
 `v2.0.0` → `v2.1.0` → `v2.2.0` → `v2.2.1` → `v2.2.2` → `v2.2.3` → `v2.2.4` →
-`v2.3.0` → `v2.3.1` → `v2.3.2` → `v2.3.3` → `v2.3.4` → `v2.3.5` → `v2.3.6` → `v2.3.7` → `v2.4.0` → `v2.4.1` → `v2.4.2`. All tags pushed; GitHub releases created for each.
+`v2.3.0` → `v2.3.1` → `v2.3.2` → `v2.3.3` → `v2.3.4` → `v2.3.5` → `v2.3.6` → `v2.3.7` → `v2.4.0` → `v2.4.1` → `v2.4.2` → `v2.5.0`. All tags pushed; GitHub releases created for each.
 
 ---
 
@@ -36,7 +36,7 @@ Release history:
 | Context | Linux (default) |
 | File perms | Migrated to 0o600/0o700 on v2.3.2 first-run (verified) |
 
-### Work laptop (Windows via WSL, `fridriks@WKS0001100062`, Boehringer Ingelheim corporate)
+### Work laptop (WSL, `fridriks@WKS0001100062`, Boehringer Ingelheim corporate)
 
 | Setting | Value |
 |---|---|
@@ -44,11 +44,9 @@ Release history:
 | Default model | `gemini-3-flash-preview` |
 | API keys | `~/.bashrc` env vars (`ASK_ZAI_API_KEY`, `ASK_ANTHROPIC_API_KEY`, `ASK_GOOGLE_API_KEY`). Migrated 2026-04-15 via `docs/one-off/migrate-api-keys-to-env.md`; `api_key` fields in config.json blanked. |
 | `.bashrc` cleanup | Duplicate `export` lines deduped 2026-04-15 (kept last occurrence per name). |
-| Installed version | **v2.3.0** (pending pull to v2.3.2 for the security hardening + permission migration) |
-| Context | Depends on entry point — Linux from WSL terminal, Windows from PowerShell |
-| Windows integration | Path B (corporate-locked): User-scope env vars `ASK_CONTEXT=windows` + `WSLENV=ASK_CONTEXT/u`; PowerShell profile scripts blocked by Group Policy |
-| Invocation from Windows | `wsl ask "..."` (AppLocker blocks user-path `.bat` files) |
-| WSL-side symlink | Also at `/usr/local/bin/ask` (non-interactive bash spawned by `wsl.exe` finds it) |
+| Installed version | Behind `main` — see Pending user actions |
+| Windows integration | Removed in v2.5.0 — `wsl ask` from PowerShell still works but uses the Linux prompt. Optional cleanup in PowerShell: `[Environment]::SetEnvironmentVariable("ASK_CONTEXT", $null, "User")` and the same for `WSLENV` (if nothing else uses it). |
+| WSL-side symlink | Also at `/usr/local/bin/ask` (lets non-interactive shells find it) |
 
 ### Personal PC (Linux/WSL, `emil@millifrikk`)
 
@@ -56,7 +54,7 @@ Release history:
 |---|---|
 | Provider | OpenAI (after `v2.2.2` fix), Anthropic, Google Gemini, Z.ai, Ollama all configured |
 | API keys | env vars in `~/.bashrc` |
-| Installed version | v2.3.0 on last pull (pending upgrade to v2.3.2) |
+| Installed version | v2.4.2 (verified 2026-10-10); v2.5.0 pending pull |
 
 ---
 
@@ -90,7 +88,7 @@ Test suite: 209 → 530 tests; providers went from 31–39% to 95–100% coverag
 - Single-source-of-truth version wiring via `hatch.version` dynamic
 - `--version` flag
 
-### v2.2.0 → v2.2.1 — Windows/WSL context awareness
+### v2.2.0 → v2.2.1 — Windows/WSL context awareness (removed in v2.5.0)
 - `system_prompt_windows` config field
 - `_select_base_system_prompt()` reads `ASK_CONTEXT` env var at startup
 - v2.2.1: Windows prompt rewritten as Windows-first (parallel to Linux-first behavior)
@@ -152,8 +150,8 @@ Audit artifacts (`AUDIT-REPORT.md`, `FILE-IO-AUDIT.md`, `GIT-HISTORY-SECRETS-AUD
 ## Outstanding work
 
 ### Pending user actions (not delegated to Claude)
-- [ ] Pull v2.4.2 on work laptop (WSL corporate): `cd ~/projects/ask-cli && git pull --tags && ~/.venvs/ask-cli/bin/pip install -e . && ask --version`. Reinstalling matters: `httpx` and `pygments` are now declared dependencies.
-- [ ] Pull v2.4.2 on personal PC (WSL): same command.
+- [ ] Pull v2.5.0 on work laptop (WSL corporate): `cd ~/projects/ask-cli && git pull --tags && ~/.venvs/ask-cli/bin/pip install -e . && ask --version`. Reinstalling matters: `httpx` and `pygments` are now declared dependencies.
+- [ ] Pull v2.5.0 on personal PC (WSL): same command.
 - [ ] Optional: `ask --stats-reset` on the dev laptop — test runs before v2.3.5 added fake queries to the real `stats.json`.
 - [x] ~~Move Google API key on WSL laptop from `~/.config/ask/config.json` → `ASK_GOOGLE_API_KEY` in `~/.bashrc`.~~ Done 2026-04-15 — all three configured keys (zai, anthropic, google) migrated; config.json blanked.
 
@@ -173,11 +171,6 @@ Audit artifacts (`AUDIT-REPORT.md`, `FILE-IO-AUDIT.md`, `GIT-HISTORY-SECRETS-AUD
 - Decision: Anthropic for daily work, Ollama as experimental/backup
 - Alternative: https://ollama.com/upgrade (not needed yet)
 
-### Windows-native port
-- Options: (A) WSL-only, (B) cross-platform fork, (C) native distribution
-- **Current direction: Option A** — v2.2.0 context-switching handles it
-- Revisit if Windows-native users ask, or WSL integration becomes limiting
-
 ### `--execute` safety model
 - `is_destructive()` regex list is documented as a **best-effort allowlist, not a sandbox**
 - Known bypasses (shell obfuscation, user-directory targets, non-`rm` deletion) enumerated in `SECURITY.md`
@@ -195,16 +188,14 @@ Audit artifacts (`AUDIT-REPORT.md`, `FILE-IO-AUDIT.md`, `GIT-HISTORY-SECRETS-AUD
 
 ### System prompt composition
 Resolves in layers (`templates.py::resolve_system_prompt`):
-1. Base prompt — picked at startup by `_select_base_system_prompt()` based on `ASK_CONTEXT`
-2. Template prompt — if `--explain`, `--fix`, `--docker`, etc.
-3. `QUICK_SUFFIX` — if `--quick`
+1. Base prompt — `defaults.system_prompt` (Linux-focused)
+2. Templates — domain (`--docker`, …), task (`--explain`, …) and/or `--template NAME`, in that order
+3. `QUICK_SUFFIX` — if `--quick`; then the `--cmd` / `--json` instructions when those modes are on
 
 Joined with `\n\n`. Each layer optional.
 
-### Context detection
-- `ASK_CONTEXT=windows` → Windows prompt
-- Anything else (including unset) → Linux prompt
-- `WSLENV=ASK_CONTEXT/u` on Windows propagates it into WSL
+### Linux-only (v2.5.0)
+- The Windows/PowerShell context (`ASK_CONTEXT=windows`, `system_prompt_windows`, WSL launch detection) was removed on 2026-10-10 — the owner doesn't use ask-cli from Windows. ask-cli still runs inside WSL as an ordinary Linux shell.
 
 ### Version as single source of truth
 - `src/ask_cli/__init__.py::__version__`
@@ -213,7 +204,6 @@ Joined with `\n\n`. Each layer optional.
 
 ### Secrets policy
 - **Single-entry machines** (native Linux, WSL used only as a terminal): env vars in `~/.bashrc` are canonical; config file values are used only when the env var is absent.
-- **Dual-entry machines** (WSL invoked from both WSL terminal and PowerShell via `wsl ask`): env vars alone **do not work** because non-interactive bash spawned by `wsl.exe` doesn't source `~/.bashrc`. API keys must live in `~/.config/ask/config.json`. Having them in both places is fine — env vars still win in interactive WSL.
 - Config file is chmod 0o600; `_check_permissions` warns if loose
 - Data dirs chmod 0o700; history/saved/stats/commands.log all chmod 0o600 (v2.3.2)
 
@@ -250,5 +240,4 @@ Joined with `\n\n`. Each layer optional.
 3. **`ask --version`** — confirm local installed version matches `main`.
 4. **Dev environment:** `python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"` (`.venv/` is gitignored), then `.venv/bin/python -m pytest -q`.
 5. **`ls -la ~/.local/share/ask/ ~/.config/ask/`** — confirm 0o700 dirs + 0o600 files.
-6. **For Windows-side changes**, test from both WSL terminal (`ask`) and PowerShell (`wsl ask`) to verify context-switching is intact.
-7. **Before shipping a release**, run `/release-check` and see `CLAUDE.md` → "Git, Releases & Versioning".
+6. **Before shipping a release**, run `/release-check` and see `CLAUDE.md` → "Git, Releases & Versioning".

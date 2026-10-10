@@ -154,7 +154,6 @@ ask-cli/
 │   │   ├── conversation.py  # run_query, completeness check
 │   │   ├── history.py       # -c conversation history
 │   │   ├── templates.py     # built-in + user templates, prompt composition
-│   │   ├── context.py       # Linux vs Windows-via-WSL prompt selection
 │   │   ├── commands.py      # --cmd flow, destructive patterns, command execution
 │   │   ├── agent.py         # --agent loop (AgentUI protocol)
 │   │   ├── files.py         # -f / -F attachments
@@ -185,6 +184,7 @@ ask-cli/
 | State files | Atomic temp-file + rename, 0600 | No corruption, never world-readable |
 | Commands | Run under bash; agent steps get no stdin and a timeout | Models write bash; nothing hangs |
 | Agent | Plan always approved; destructive steps need "yes" | `--auto-approve` is not a blank cheque |
+| Platform | Linux only (incl. WSL as a Linux shell) | Windows context switching removed in v2.5.0 — unused |
 | UI library | `rich` only | |
 | Interactive mode | Deferred | `-c` covers terminal use |
 | Type hints | Signatures annotated, enforced by ruff | |
