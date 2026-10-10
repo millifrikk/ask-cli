@@ -347,71 +347,81 @@ ask --version
 
 ### Setup
 
+Use a separate dev venv inside the repo (gitignored) so the installed `ask` stays untouched:
+
 ```bash
 cd ~/projects/ask-cli
-source ~/.venvs/ask-cli/bin/activate
-pip install -e .[dev]
+python3 -m venv .venv
+.venv/bin/pip install -e ".[dev]"
 ```
 
 ### Run tests
 
 ```bash
-pytest -q
-pytest --cov=src/ask_cli --cov-report=term-missing
+.venv/bin/python -m pytest -q        # coverage report included
 ```
 
-Coverage target: 75%+ on core modules. 157 tests as of v2.2.4.
+Tests never touch your real API keys, `~/.config/ask`, `~/.local/share/ask` or the
+clipboard (autouse fixtures in `tests/conftest.py`), and never make network calls.
+Coverage target: 80%+ on core modules and providers (95% overall as of v2.5.0).
+CI runs ruff and pytest on Python 3.11–3.13 for every push and pull request.
 
 ### Lint & format
 
 ```bash
-ruff format src/ tests/
-ruff check src/ tests/
+.venv/bin/ruff format src/ tests/
+.venv/bin/ruff check src/ tests/
 ```
 
-Zero-warning policy. Run before every commit.
+Zero-warning policy. The rule set also enforces no `print()`, no blind `except`, typed
+signatures and bandit security checks.
 
 ### Project structure
 
 ```
 ask-cli/
 ├── src/ask_cli/
-│   ├── cli.py              # argparse + main entry point (no business logic)
-│   ├── config.py           # config loading, XDG paths, dataclasses
-│   ├── output.py           # single rich.Console, AskMarkdown, render helpers
-│   ├── exceptions.py       # typed exception hierarchy
+│   ├── cli.py              # argument parsing, flag validation, dispatch, error boundary
+│   ├── config.py           # config loading/validation, XDG paths (AppPaths)
+│   ├── output.py           # all terminal I/O: consoles, streaming display, prompts
+│   ├── exceptions.py       # typed exceptions with actionable hints
 │   ├── core/
-│   │   ├── conversation.py # run_query() orchestrator
-│   │   ├── history.py      # conversation history with TTL
-│   │   ├── templates.py    # built-in + user templates
-│   │   ├── files.py        # attachment globbing
+│   │   ├── conversation.py # run_query(), empty/cut-off response checks
+│   │   ├── history.py      # -c conversation history with TTL
+│   │   ├── templates.py    # built-in + user templates, prompt composition
+│   │   ├── files.py        # -f / -F attachments
+│   │   ├── fences.py       # fenced code block parsing
 │   │   ├── saved.py        # --save / --recall
-│   │   ├── commands.py     # --cmd extraction + safety checks
+│   │   ├── commands.py     # --cmd flow, destructive patterns, command execution
 │   │   ├── agent.py        # multi-step agent loop
-│   │   └── stats.py        # --stats tracking
+│   │   ├── stats.py        # --stats tracking
+│   │   └── storage.py      # atomic, owner-only JSON state files
 │   └── providers/
+│       ├── __init__.py     # provider registry
 │       ├── base.py         # BaseProvider ABC
+│       ├── errors.py       # SDK/network error translation
 │       ├── anthropic.py    # native Anthropic
-│       ├── zai.py          # Anthropic SDK, Z.ai base_url
-│       ├── openai.py       # OpenAI SDK
-│       ├── google.py       # google-genai
-│       └── ollama.py       # OpenAI-compat, local or cloud
-└── tests/
+│       ├── zai.py          # Anthropic-compatible, Z.ai base_url
+│       ├── openai.py       # OpenAI Chat Completions
+│       ├── ollama.py       # OpenAI-compatible, local or cloud
+│       └── google.py       # google-genai
+├── tests/                  # mirrors src/
+└── .github/workflows/ci.yml
 ```
 
 ### Versioning & releases
 
 Single source of truth: `src/ask_cli/__init__.py`. `pyproject.toml` reads it dynamically via hatch.
 
-Release workflow:
+Release workflow (full checklist: `docs/RELEASE-CHECKLIST.md`):
 
 ```bash
-vim src/ask_cli/__init__.py      # bump __version__
+vim src/ask_cli/__init__.py      # bump __version__; update CHANGELOG.md + README badge
 git add -A
 git commit -m "chore: bump version to vX.Y.Z"
 git tag vX.Y.Z
 git push origin main --tags
-gh release create vX.Y.Z --generate-notes    # optional
+gh release create vX.Y.Z --generate-notes
 ```
 
 See `CLAUDE.md` for the full development contract.

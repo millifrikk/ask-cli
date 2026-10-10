@@ -36,9 +36,9 @@ the diff since the last tag — not the whole codebase.
 
 - [ ] New `subprocess.run` / `os.system` / `eval` / `exec` calls? Trace user input through each one. If user input reaches a shell, verify the `is_destructive()` gate applies or add one.
 - [ ] New CLI arguments that become file paths, URLs, or shell tokens? Check for path traversal (`..`), URL validation, shell metacharacter handling.
-- [ ] New API endpoints / providers / `base_url` fields? Verify the scheme check in `_validate_base_url` still covers them.
-- [ ] New `write_text` / `open(..., "w")` / `open(..., "a")` calls? Verify `chmod 0o600` after write if the file can contain user-visible prompts, responses, commands, credentials, or logs.
-- [ ] New `mkdir` calls? If the directory holds sensitive data, use `_ensure_private_dir()` (chmod 0o700).
+- [ ] New API endpoints / providers / `base_url` fields? Verify the hostname check in `config._base_url_warning` still covers them.
+- [ ] New `write_text` / `open(..., "w")` / `open(..., "a")` calls? If the file can contain prompts, responses, commands, credentials, or logs, write JSON through `core.storage.write_private_json()` (atomic, 0600) or chmod 0o600 explicitly.
+- [ ] New `mkdir` calls? If the directory holds sensitive data, use `core.storage.ensure_private_dir()` (chmod 0o700).
 - [ ] New error messages / log output? Verify no API keys, file contents, or user-identifying strings get interpolated.
 - [ ] New dependencies in `pyproject.toml`? Add an upper bound (`<N+1`) and note the addition in the CHANGELOG.
 
