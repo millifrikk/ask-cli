@@ -2,7 +2,7 @@
 
 Living document. Update when we make meaningful changes so the next session can pick up without excavating chat history.
 
-**Last updated:** 2026-10-09 · **Version:** v2.5.0
+**Last updated:** 2026-10-10 · **Version:** v2.5.0
 
 ---
 

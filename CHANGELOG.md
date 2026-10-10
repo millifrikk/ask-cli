@@ -6,6 +6,21 @@ follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.5.0] — 2026-10-10
+
+### Removed
+- **Windows context switching — ask-cli is now Linux-only.** `ASK_CONTEXT`
+  is ignored, `defaults.system_prompt_windows` is no longer read, and the WSL
+  launch detection is gone; the Linux system prompt is always used. ask-cli
+  still runs inside WSL as an ordinary Linux shell, and `wsl ask` from
+  PowerShell still works (with the Linux prompt). Existing config files that
+  contain `system_prompt_windows` load unchanged. The README's Windows
+  integration sections and the WSL dual-entry key guide are removed.
+
+### Changed
+- CI uses `actions/checkout@v5` and `actions/setup-python@v6` (Node 20
+  deprecation).
+
 ## [2.4.2] — 2026-10-09
 
 ### Added
@@ -365,7 +380,8 @@ follows [SemVer](https://semver.org/).
   OpenAI, Google Gemini, Ollama), streaming, domain modes, conversation
   history, save/recall, agent mode, and XDG-compliant config.
 
-[Unreleased]: https://github.com/millifrikk/ask-cli/compare/v2.4.2...HEAD
+[Unreleased]: https://github.com/millifrikk/ask-cli/compare/v2.5.0...HEAD
+[2.5.0]: https://github.com/millifrikk/ask-cli/compare/v2.4.2...v2.5.0
 [2.4.2]: https://github.com/millifrikk/ask-cli/compare/v2.4.1...v2.4.2
 [2.4.1]: https://github.com/millifrikk/ask-cli/compare/v2.4.0...v2.4.1
 [2.4.0]: https://github.com/millifrikk/ask-cli/compare/v2.3.7...v2.4.0
