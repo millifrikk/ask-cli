@@ -56,6 +56,14 @@ Release history:
 | API keys | env vars in `~/.bashrc` |
 | Installed version | v2.4.2 (verified 2026-10-10); v2.5.0 pending pull |
 
+### Prod server (Linux, `emil@ubuntu-millicentral`)
+
+| Setting | Value |
+|---|---|
+| Install method | **pipx** from GitHub — no source checkout on this machine |
+| Upgrade | `pipx install --force "git+https://github.com/millifrikk/ask-cli.git@vX.Y.Z"` |
+| Installed version | v2.5.0 (verified 2026-11-11) |
+
 ---
 
 ## Hardening pass (October 2026, v2.3.5 → v2.4.2)
