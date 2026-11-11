@@ -62,6 +62,8 @@ Release history:
 |---|---|
 | Install method | **pipx** from GitHub — no source checkout on this machine |
 | Upgrade | `pipx install --force "git+https://github.com/millifrikk/ask-cli.git@v2.5.0"` (replace the tag with the release you want) |
+| Provider | Anthropic (default; `claude-sonnet-5-5` / fast `claude-haiku-5-5` / smart `claude-opus-5-5`), set 2026-11-11. Z.ai and Google also configured. Z.ai `default_model` still shows a Claude model and needs fixing if Z.ai is used |
+| API key | `ASK_ANTHROPIC_API_KEY` in `~/.bashrc` |
 | Installed version | v2.5.0 (verified 2026-11-11) |
 
 ### `vv-kraninn-01` (Linux server, shared by several users)
