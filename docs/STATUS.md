@@ -54,7 +54,17 @@ Release history:
 |---|---|
 | Provider | OpenAI (after `v2.2.2` fix), Anthropic, Google Gemini, Z.ai, Ollama all configured |
 | API keys | env vars in `~/.bashrc` |
-| Installed version | v2.4.2 (verified 2026-10-10); v2.5.0 pending pull |
+| Default provider | Anthropic (`claude-sonnet-5-5` / fast `claude-haiku-5-5` / smart `claude-opus-5-5`) |
+| Installed version | v2.5.0 (verified 2026-11-11) |
+
+### Dev/staging server (Linux, `emil@millicentral-devstaging-01`)
+
+| Setting | Value |
+|---|---|
+| Install | `~/.venvs/ask-cli` (update: `pip show ask-cli` gives the editable location; `git pull --tags` there, then `pip install -e`) |
+| Provider | Anthropic (default since 2026-11-11; `claude-sonnet-5-5` / fast `claude-haiku-5-5` / smart `claude-opus-5-5`); Google and Ollama also configured. Z.ai `default_model` shows a stale Claude model (unused) |
+| API key | `ASK_ANTHROPIC_API_KEY` in `~/.bashrc` |
+| Installed version | v2.5.0 (verified 2026-11-11) |
 
 ### Prod server (Linux, `emil@ubuntu-millicentral`)
 
