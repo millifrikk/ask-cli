@@ -64,6 +64,16 @@ Release history:
 | Upgrade | `pipx install --force "git+https://github.com/millifrikk/ask-cli.git@v2.5.0"` (replace the tag with the release you want) |
 | Installed version | v2.5.0 (verified 2026-11-11) |
 
+### `vv-kraninn-01` (Linux server, shared by several users)
+
+| Setting | Value |
+|---|---|
+| Install | System-wide venv `/opt/ask-cli`, linked to `/usr/local/bin/ask` (root-owned; every user can run it) |
+| Upgrade (as root) | `/opt/ask-cli/bin/pip install --upgrade "git+https://github.com/millifrikk/ask-cli.git@v2.5.0"` (replace the tag) |
+| Config | Template `/etc/ask-config.json` (Anthropic; `claude-sonnet-5-5` / fast `claude-haiku-5-5` / smart `claude-opus-5-5`) copied to each user's `~/.config/ask/config.json` and to `/etc/skel` |
+| API key | Shared `ASK_ANTHROPIC_API_KEY` in `/etc/ask-cli.env` (root:askusers, 0640), sourced by `/etc/profile.d/ask-cli.sh`. New user: `usermod -aG askusers <user>`, then log in again |
+| Installed version | v2.5.0 (verified 2026-11-11 as `deploy`) |
+
 ---
 
 ## Hardening pass (October 2026, v2.3.5 → v2.4.2)
