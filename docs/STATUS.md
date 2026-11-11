@@ -62,7 +62,7 @@ Release history:
 | Setting | Value |
 |---|---|
 | Install | `~/.venvs/ask-cli` (update: `pip show ask-cli` gives the editable location; `git pull --tags` there, then `pip install -e`) |
-| Provider | Anthropic (default since 2026-11-11; `claude-sonnet-5-5` / fast `claude-haiku-5-5` / smart `claude-opus-5-5`); Google and Ollama also configured. Z.ai `default_model` shows a stale Claude model (unused) |
+| Provider | Anthropic (default since 2026-11-11; `claude-sonnet-5-5` / fast `claude-haiku-5-5` / smart `claude-opus-5-5`); Google and Ollama also configured; Z.ai not in use (no active key) |
 | API key | `ASK_ANTHROPIC_API_KEY` in `~/.bashrc` |
 | Installed version | v2.5.0 (verified 2026-11-11) |
 
@@ -72,7 +72,7 @@ Release history:
 |---|---|
 | Install method | **pipx** from GitHub — no source checkout on this machine |
 | Upgrade | `pipx install --force "git+https://github.com/millifrikk/ask-cli.git@v2.5.0"` (replace the tag with the release you want) |
-| Provider | Anthropic (default; `claude-sonnet-5-5` / fast `claude-haiku-5-5` / smart `claude-opus-5-5`), set 2026-11-11. Z.ai and Google also configured. Z.ai `default_model` still shows a Claude model and needs fixing if Z.ai is used |
+| Provider | Anthropic (default; `claude-sonnet-5-5` / fast `claude-haiku-5-5` / smart `claude-opus-5-5`), set 2026-11-11. Google also configured; Z.ai not in use (no active key) |
 | API key | `ASK_ANTHROPIC_API_KEY` in `~/.bashrc` |
 | Installed version | v2.5.0 (verified 2026-11-11) |
 
