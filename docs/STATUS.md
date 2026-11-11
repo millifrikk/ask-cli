@@ -61,7 +61,7 @@ Release history:
 | Setting | Value |
 |---|---|
 | Install method | **pipx** from GitHub — no source checkout on this machine |
-| Upgrade | `pipx install --force "git+https://github.com/millifrikk/ask-cli.git@vX.Y.Z"` |
+| Upgrade | `pipx install --force "git+https://github.com/millifrikk/ask-cli.git@v2.5.0"` (replace the tag with the release you want) |
 | Installed version | v2.5.0 (verified 2026-11-11) |
 
 ---
