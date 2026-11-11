@@ -2,7 +2,7 @@
 
 Living document. Update when we make meaningful changes so the next session can pick up without excavating chat history.
 
-**Last updated:** 2026-10-10 · **Version:** v2.5.0
+**Last updated:** 2026-11-11 · **Version:** v2.5.0
 
 ---
 
@@ -181,7 +181,8 @@ Audit artifacts (`AUDIT-REPORT.md`, `FILE-IO-AUDIT.md`, `GIT-HISTORY-SECRETS-AUD
 
 ### Pending user actions (not delegated to Claude)
 - [ ] Pull v2.5.0 on work laptop (WSL corporate): `cd ~/projects/ask-cli && git pull --tags && ~/.venvs/ask-cli/bin/pip install -e . && ask --version`. Reinstalling matters: `httpx` and `pygments` are now declared dependencies.
-- [ ] Pull v2.5.0 on personal PC (WSL): same command.
+- [x] ~~Pull v2.5.0 on personal PC~~ Done 2026-11-11; prod, dev/staging and `vv-kraninn-01` also on v2.5.0 with Anthropic.
+- [ ] Optional: delete the `config.json.bak` backups left on `ubuntu-millicentral`, `millicentral-devstaging-01` (`~/.config/ask/`) and `vv-kraninn-01` (`/home/deploy/.config/ask/`).
 - [ ] Optional: `ask --stats-reset` on the dev laptop — test runs before v2.3.5 added fake queries to the real `stats.json`.
 - [x] ~~Move Google API key on WSL laptop from `~/.config/ask/config.json` → `ASK_GOOGLE_API_KEY` in `~/.bashrc`.~~ Done 2026-04-15 — all three configured keys (zai, anthropic, google) migrated; config.json blanked.
 
@@ -189,8 +190,8 @@ Audit artifacts (`AUDIT-REPORT.md`, `FILE-IO-AUDIT.md`, `GIT-HISTORY-SECRETS-AUD
 - [x] ~~Clean up duplicate `export PATH` lines in WSL `~/.bashrc` (cosmetic)~~ Done 2026-04-15 via `/tmp/dedupe-command.txt` heredoc — all duplicate exports deduped.
 
 ### Process improvements we discussed but didn't wire up
-- [x] ~~Auto-detect non-interactive WSL shells from Windows for more robust context detection~~ Shipped in v2.3.3 — `_invocation_is_interactive_wsl()` heuristic overrides `ASK_CONTEXT=windows` back to Linux when both (a) we're in WSL and (b) at least one of stdin/stdout is a TTY.
-- [ ] Provider fallback chain on 401/403/429 (e.g. Anthropic → Z.ai → error)
+- [x] ~~Auto-detect non-interactive WSL shells from Windows for more robust context detection~~ Shipped in v2.3.3 — `_invocation_is_interactive_wsl()` heuristic overrides `ASK_CONTEXT=windows` back to Linux when both (a) we're in WSL and (b) at least one of stdin/stdout is a TTY. (Removed with the Windows context in v2.5.0.)
+- [ ] Provider fallback chain on 401/403/429 (e.g. Anthropic → Google → error; Z.ai has no active key)
 
 ---
 
